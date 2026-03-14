@@ -3,188 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Truck RPM Controller</title>
+    <title>Truck RPM Controller Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
         body { 
-            background-color: #1a1a1a; color: white; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background-color: #1a1a1a; color: white; font-family: -apple-system, sans-serif; 
             text-align: center; margin: 0; padding: 10px;
             display: flex; flex-direction: column; align-items: center;
-            min-height: 100vh; overflow: hidden;
         }
-        
-        /* 상단 상태 바 */
         .top-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
         #status { font-size: 14px; color: #888; font-weight: bold; }
-        .btn-connect { 
-            padding: 8px 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer;
-            background: #444; color: white; box-shadow: 0 4px #222;
-        }
-        .btn-connect.connected { background: #2ecc71; box-shadow: 0 4px #27ae60; }
-        .btn-connect:active { transform: translateY(2px); box-shadow: 0 2px #222; }
+        .btn-connect { padding: 8px 15px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; background: #444; color: white; }
+        .btn-connect.connected { background: #2ecc71; }
 
-        /* 엔진 RPM 타이틀 */
-        .gauge-title {
-            font-size: 24px; font-weight: 800; color: #2ecc71; margin-top: 10px; margin-bottom: -10px;
-            text-shadow: 0 0 10px rgba(46, 204, 113, 0.5);
-        }
+        .gauge-title { font-size: 22px; font-weight: bold; color: #2ecc71; margin: 10px 0 -15px 0; z-index: 10; position: relative; }
+        .gauge-container { width: 320px; height: 320px; }
 
-        /* 게이지 컨테이너 */
-        .gauge-container { width: 100%; max-width: 340px; margin: 10px 0; }
-
-        /* 컨트롤 버튼 레이아웃 */
-        .controls { 
-            display: grid; grid-template-columns: 1fr 1fr; gap: 15px; 
-            width: 100%; max-width: 360px; margin-top: 5px; 
-        }
+        .control-panel { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 15px; }
+        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         
-        .btn {
-            padding: 20px 0; font-size: 18px; font-weight: bold; border-radius: 12px; border: none; cursor: pointer;
-            color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-            transition: all 0.1s;
+        button.ctrl-btn { 
+            padding: 18px; font-size: 18px; font-weight: bold; border-radius: 12px; border: none; cursor: pointer;
+            color: white; transition: 0.1s; box-shadow: 0 5px #222;
         }
+        button.ctrl-btn:active { transform: translateY(3px); box-shadow: 0 2px #111; }
+        
+        .btn-up { background: linear-gradient(145deg, #3498db, #2980b9); }
+        .btn-down { background: linear-gradient(145deg, #e67e22, #d35400); }
+        .btn-start { background: linear-gradient(145deg, #2ecc71, #27ae60); }
+        .btn-stop { background: linear-gradient(145deg, #e74c3c, #c0392b); }
 
-        /* 개별 버튼 디자인 */
-        .btn-up { background: linear-gradient(145deg, #3498db, #2980b9); box-shadow: 0 6px #1c5980; }
-        .btn-down { background: linear-gradient(145deg, #e67e22, #d35400); box-shadow: 0 6px #a04000; }
-        .btn-start { background: linear-gradient(145deg, #2ecc71, #27ae60); box-shadow: 0 6px #1e8449; }
-        .btn-stop { background: linear-gradient(145deg, #e74c3c, #c0392b); box-shadow: 0 6px #942a1e; }
-
-        .btn:active { transform: translateY(4px); box-shadow: 0 2px rgba(0,0,0,0.5); }
-
-        /* 통신 속도 설정 */
-        .baud-rate { margin-top: 20px; display: flex; gap: 10px; }
-        .btn-small { padding: 5px 10px; font-size: 12px; background: #333; border: 1px solid #555; color: #ccc; border-radius: 5px; }
-        .btn-small.active { background: #2ecc71; color: white; border-color: #27ae60; }
+        .config-row { background: #2a2a2a; padding: 15px; border-radius: 15px; border: 1px solid #444; }
+        .label { font-size: 12px; color: #aaa; margin-bottom: 8px; text-align: left; }
+        select, input { background: #111; color: white; border: 1px solid #555; padding: 8px; border-radius: 5px; }
     </style>
 </head>
 <body>
 
     <div class="top-bar">
-        <div id="status">DISCONNECTED</div>
-        <button id="connectBtn" class="btn-connect" onclick="connectBLE()">CONNECT</button>
+        <div id="status">Ready</div>
+        <button id="connectBtn" class="btn-connect" onclick="toggleConnect()">CONNECT</button>
     </div>
 
     <div class="gauge-title">ENGINE RPM</div>
-
     <div class="gauge-container">
-        <canvas id="gauge-rpm"></canvas>
+        <canvas id="rpm-gauge"></canvas>
     </div>
 
-    <div class="controls">
-        <button class="btn btn-up" onclick="sendCmd('UP')">RPM UP ▲</button>
-        <button class="btn btn-down" onclick="sendCmd('DOWN')">RPM DOWN ▼</button>
-        <button class="btn btn-start" onclick="sendCmd('START')">START</button>
-        <button class="btn btn-stop" onclick="sendCmd('STOP')">STOP</button>
-    </div>
+    <div class="control-panel">
+        <div class="btn-row">
+            <button class="ctrl-btn btn-up" onclick="sendPacket(0xA4, 1)">RPM UP ▲</button>
+            <button class="ctrl-btn btn-down" onclick="sendPacket(0xA4, 0)">RPM DOWN ▼</button>
+        </div>
 
-    <div class="baud-rate">
-        <button id="btn250" class="btn-small" onclick="setBaud(250)">CAN 250K</button>
-        <button id="btn500" class="btn-small active" onclick="setBaud(500)">CAN 500K</button>
+        <div class="btn-row">
+            <button class="ctrl-btn btn-start" onclick="sendPacket(0xA3, 1)">START</button>
+            <button class="ctrl-btn btn-stop" onclick="sendPacket(0xA3, 0)">STOP</button>
+        </div>
+
+        <div class="config-row">
+            <div class="label">ENGINE / SOURCE ADDRESS</div>
+            <div style="display: flex; gap: 5px;">
+                <select id="saSelect" onchange="onSAChange()" style="flex: 2;">
+                    <option value="3">Detroit / Hino (3)</option>
+                    <option value="7">Cummins / Paccar PX (7)</option>
+                    <option value="11" selected>Mack / Volvo / MX (11)</option>
+                    <option value="42">Old Mack (42)</option>
+                    <option value="custom">Direct Input</option>
+                </select>
+                <input type="number" id="customSA" value="11" min="0" max="253" style="width: 50px; display: none;">
+                <button onclick="applySA()" style="flex: 1; background: #f39c12; color: white; border: none; border-radius: 5px; font-weight: bold;">SET</button>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 20px; margin-top: 5px;">
+            <label><input type="radio" name="baud" onclick="sendPacket(0xA1, 250)"> 250K</label>
+            <label><input type="radio" name="baud" checked onclick="sendPacket(0xA1, 500)"> 500K</label>
+        </div>
     </div>
 
     <script>
-        let bleDevice, bleChar;
+        let device, bleChar;
         const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const CHAR_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        const CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 
-        // 게이지 초기화
         const gauge = new RadialGauge({
-            renderTo: 'gauge-rpm',
-            width: 320,
-            height: 320,
-            units: "RPM",
-            minValue: 0,
-            maxValue: 3000,
-            majorTicks: ["0", "500", "1000", "1500", "2000", "2500", "3000"],
-            minorTicks: 2,
-            ticksAngle: 250,
-            startAngle: 55,
-            strokeTicks: true,
-            highlights: [
-                { "from": 2200, "to": 3000, "color": "rgba(200, 50, 50, .75)" }
-            ],
-            colorPlate: "#1a1a1a",
-            colorMajorTicks: "#f5f5f5",
-            colorMinorTicks: "#ddd",
-            colorNumbers: "#eee",
-            colorUnits: "#2ecc71",
-            colorValueText: "#fff",
-            borderShadowWidth: 0,
-            borders: false,
-            needleType: "arrow",
-            needleWidth: 3,
-            needleCircleSize: 7,
-            needleCircleOuter: true,
-            needleCircleInner: false,
-            animationDuration: 500,
-            animationRule: "linear",
-            // 디지털 숫자 설정 (정수로 표시)
-            valueBox: true,
-            valueInt: 1,
-            valueDec: 0, // 소수점 제거
-            fontValueSize: 40,
-            title: "" // 게이지 내부 타이틀 제거 (겹침 방지)
+            renderTo: 'rpm-gauge', width: 320, height: 320, minValue: 0, maxValue: 3000,
+            majorTicks: ["0","500","1000","1500","2000","2500","3000"],
+            colorPlate: "transparent", colorNumbers: "#eee", colorUnits: "#2ecc71",
+            needleType: "arrow", needleWidth: 3, valueBox: true,
+            valueInt: 1, valueDec: 0, // 소수점 제거
+            fontValueSize: 40, title: "", // 겹침 방지 위해 타이틀 제거
+            highlights: [{ from: 2200, to: 3000, color: 'rgba(200, 50, 50, .75)' }],
+            animationDuration: 500, animationRule: "linear"
         }).draw();
 
-        async function connectBLE() {
+        async function toggleConnect() {
+            if (device) { await device.gatt.disconnect(); return; }
             try {
-                const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'ESP32_RPM' }],
-                    optionalServices: [SERVICE_UUID]
-                });
-                
+                device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_UUID] }] });
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 bleChar = await service.getCharacteristic(CHAR_UUID);
-                
                 await bleChar.startNotifications();
-                bleChar.addEventListener('characteristicvaluechanged', handleData);
-                
-                document.getElementById('status').innerText = "CONNECTED";
-                document.getElementById('status').style.color = "#2ecc71";
-                document.getElementById('connectBtn').innerText = "DISCONNECT";
-                document.getElementById('connectBtn').classList.add('connected');
-                
-                bleDevice = device;
-            } catch (error) {
-                console.log(error);
-                alert("연결 실패: " + error);
-            }
-        }
-
-        function handleData(event) {
-            let data = event.target.value;
-            // ESP32에서 보낸 데이터 해석 (2바이트씩 Current RPM, Target RPM)
-            let currentRPM = data.getUint16(0, true);
-            let targetRPM = data.getUint16(2, true);
-            
-            gauge.value = currentRPM;
-
-            // Target RPM 영역 시각화 (하이라이트 업데이트)
-            if (targetRPM > 0) {
-                gauge.update({
-                    highlights: [
-                        { from: 0, to: targetRPM, color: "rgba(46, 204, 113, 0.2)" },
-                        { from: 2200, to: 3000, color: "rgba(200, 50, 50, .75)" }
-                    ]
+                bleChar.addEventListener('characteristicvaluechanged', (e) => {
+                    let val = e.target.value.getUint16(0, true);
+                    gauge.value = val;
                 });
-            }
+                document.getElementById('status').innerText = "CONNECTED";
+                document.getElementById('connectBtn').classList.add('connected');
+            } catch (e) { console.error(e); }
         }
 
-        async function sendCmd(cmd) {
+        async function sendPacket(type, val) {
             if (!bleChar) return;
-            let encoder = new TextEncoder();
-            await bleChar.writeValue(encoder.encode(cmd));
+            await bleChar.writeValue(new Uint8Array([type, val]));
         }
 
-        async function setBaud(val) {
-            document.getElementById('btn250').classList.toggle('active', val === 250);
-            document.getElementById('btn500').classList.toggle('active', val === 500);
-            if (bleChar) {
-                let encoder = new TextEncoder();
-                await bleChar.writeValue(encoder.encode("BAUD:" + val));
-            }
+        function onSAChange() {
+            const s = document.getElementById('saSelect');
+            const i = document.getElementById('customSA');
+            i.style.display = (s.value === 'custom') ? 'block' : 'none';
+            if(s.value !== 'custom') i.value = s.value;
+        }
+
+        function applySA() {
+            const sa = parseInt(document.getElementById('customSA').value);
+            sendPacket(0xA2, sa);
+            alert("SA " + sa + "로 설정되었습니다.");
         }
     </script>
 </body>
