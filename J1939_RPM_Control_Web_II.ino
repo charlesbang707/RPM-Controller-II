@@ -6,8 +6,13 @@
 #include <Preferences.h>
 #include "driver/twai.h"
 
-#define CAN_TX_PIN GPIO_NUM_22
-#define CAN_RX_PIN GPIO_NUM_21
+// --- 핀 설정 (기존 스위치 핀 복구) ---
+#define CAN_TX_PIN   GPIO_NUM_22
+#define CAN_RX_PIN   GPIO_NUM_21
+const int RESUME_PIN = 32; // START 기능
+const int STOP_PIN   = 26; // STOP 기능
+const int UP_PIN     = 33; // RPM UP
+const int DOWN_PIN   = 25; // RPM DOWN
 
 Preferences prefs;
 byte mySA = 0x0B; 
@@ -24,6 +29,10 @@ volatile int currentRPM = 0;
 enum ControlState { IDLE, RUNNING, STOPPING };
 volatile ControlState currentState = IDLE;
 
+// --- 물리 버튼 상태 관리를 위한 변수 ---
+unsigned long lastBtnTime = 0;
+const int debounceDelay = 250; // 버튼 중복 입력 방지
+
 void sendAddressClaim() {
     twai_message_t msg;
     msg.identifier = 0x18EEFF00 | mySA;
@@ -33,35 +42,40 @@ void sendAddressClaim() {
     claimTimer = millis();
 }
 
+// BLE 명령 처리
 class MyCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
         std::string value = pCharacteristic->getValue();
         if (value.length() >= 2) {
             uint8_t type = value[0];
             uint8_t val  = value[1];
-
-            if (type == 0xA1) { // Baud
-                int b = (val == 250) ? 250 : 500;
-                if(currentBaud != b) { prefs.putInt("baud", b); ESP.restart(); }
-            } 
-            else if (type == 0xA2) { // SA
-                mySA = val;
-                prefs.putUChar("mySA", mySA);
-                addressConfirmed = false;
-                sendAddressClaim();
-            }
-            else if (type == 0xA3) { // Start/Stop
-                if (val == 1) { currentState = RUNNING; targetRPM = 800; }
-                else { currentState = STOPPING; }
-            }
-            else if (type == 0xA4) { // RPM Up/Down
-                if (val == 1) targetRPM += 100;
-                else targetRPM -= 100;
-                targetRPM = constrain(targetRPM, 600, 2500);
-            }
+            processCommand(type, val);
         }
     }
 };
+
+// 명령 통합 처리 함수 (BLE와 물리 버튼 공용)
+void processCommand(uint8_t type, uint8_t val) {
+    if (type == 0xA1) { // Baud Rate
+        int b = (val == 250) ? 250 : 500;
+        if(currentBaud != b) { prefs.putInt("baud", b); ESP.restart(); }
+    } 
+    else if (type == 0xA2) { // SA 설정
+        mySA = val;
+        prefs.putUChar("mySA", mySA);
+        addressConfirmed = false;
+        sendAddressClaim();
+    }
+    else if (type == 0xA3) { // START(1) / STOP(0)
+        if (val == 1) { currentState = RUNNING; if(targetRPM < 800) targetRPM = 800; }
+        else { currentState = STOPPING; }
+    }
+    else if (type == 0xA4) { // RPM UP(1) / DOWN(0)
+        if (val == 1) targetRPM += 100;
+        else targetRPM -= 100;
+        targetRPM = constrain(targetRPM, 600, 2500);
+    }
+}
 
 void CAN_Task(void *pvParameters) {
     twai_message_t rx_msg;
@@ -78,6 +92,13 @@ void CAN_Task(void *pvParameters) {
 
 void setup() {
     Serial.begin(115200);
+    
+    // 버튼 핀 설정 (내부 풀업 사용)
+    pinMode(RESUME_PIN, INPUT_PULLUP);
+    pinMode(STOP_PIN,   INPUT_PULLUP);
+    pinMode(UP_PIN,     INPUT_PULLUP);
+    pinMode(DOWN_PIN,   INPUT_PULLUP);
+
     prefs.begin("j1939", false);
     mySA = prefs.getUChar("mySA", 0x0B);
     currentBaud = prefs.getInt("baud", 500);
@@ -91,7 +112,8 @@ void setup() {
     BLEDevice::init("ESP32_RPM_CTRL");
     BLEServer *pServer = BLEDevice::createServer();
     BLEService *pService = pServer->createService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
-    pCharacteristic = pService->createCharacteristic("6e400002-b5a3-f393-e0a9-e50e24dcca9e", BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+    pCharacteristic = pService->createCharacteristic("6e400002-b5a3-f393-e0a9-e50e24dcca9e", 
+                        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
     pCharacteristic->setCallbacks(new MyCallbacks());
     pCharacteristic->addDescriptor(new BLE2902());
     pService->start();
@@ -102,23 +124,46 @@ void setup() {
 }
 
 void loop() {
+    unsigned long now = millis();
+
+    // --- 물리 버튼 스캔 (디바운스 처리 포함) ---
+    if (now - lastBtnTime > debounceDelay) {
+        if (digitalRead(RESUME_PIN) == LOW) { processCommand(0xA3, 1); lastBtnTime = now; }
+        else if (digitalRead(STOP_PIN) == LOW) { processCommand(0xA3, 0); lastBtnTime = now; }
+        else if (digitalRead(UP_PIN) == LOW) { processCommand(0xA4, 1); lastBtnTime = now; }
+        else if (digitalRead(DOWN_PIN) == LOW) { processCommand(0xA4, 0); lastBtnTime = now; }
+    }
+
+    // --- J1939 TSC1 메시지 송신 (10ms 간격) ---
     static unsigned long lastTX = 0;
-    if (millis() - lastTX >= 10 && currentState == RUNNING && addressConfirmed) {
-        uint16_t r = (uint16_t)(targetRPM / 0.125);
-        twai_message_t tx;
-        tx.identifier = 0x0C000000 | (0x00 << 8) | mySA;
-        tx.extd = 1; tx.data_length_code = 8;
-        tx.data[0] = 0x01; tx.data[1] = (uint8_t)(r & 0xFF); tx.data[2] = (uint8_t)(r >> 8);
-        for(int i=3; i<8; i++) tx.data[i] = 0xFF;
-        twai_transmit(&tx, pdMS_TO_TICKS(5));
-        lastTX = millis();
+    if (now - lastTX >= 10) {
+        if (currentState == RUNNING && addressConfirmed) {
+            uint16_t r = (uint16_t)(targetRPM / 0.125);
+            twai_message_t tx;
+            tx.identifier = 0x0C000000 | (0x00 << 8) | mySA;
+            tx.extd = 1; tx.data_length_code = 8;
+            tx.data[0] = 0x01; // Speed Control Mode
+            tx.data[1] = (uint8_t)(r & 0xFF);
+            tx.data[2] = (uint8_t)(r >> 8);
+            for(int i=3; i<8; i++) tx.data[i] = 0xFF;
+            twai_transmit(&tx, pdMS_TO_TICKS(5));
+        } 
+        else if (currentState == STOPPING) {
+            targetRPM -= 10; // 점진적으로 RPM 감소
+            if (targetRPM <= 600) { currentState = IDLE; targetRPM = 0; }
+        }
+        lastTX = now;
     }
     
+    // --- BLE 상태 알림 (100ms 간격) ---
     static unsigned long lastBLE = 0;
-    if (millis() - lastBLE >= 100) {
-        uint8_t d[2] = { (uint8_t)(currentRPM & 0xFF), (uint8_t)(currentRPM >> 8) };
-        pCharacteristic->setValue(d, 2);
+    if (now - lastBLE >= 100) {
+        uint8_t d[4] = { 
+            (uint8_t)(currentRPM & 0xFF), (uint8_t)(currentRPM >> 8),
+            (uint8_t)(targetRPM & 0xFF), (uint8_t)(targetRPM >> 8) 
+        };
+        pCharacteristic->setValue(d, 4);
         pCharacteristic->notify();
-        lastBLE = millis();
+        lastBLE = now;
     }
 }
