@@ -6,13 +6,14 @@
 #include <Preferences.h>
 #include "driver/twai.h"
 
-// --- 핀 설정 (기존 스위치 핀 복구) ---
+// --- 핀 설정 ---
 #define CAN_TX_PIN   GPIO_NUM_22
 #define CAN_RX_PIN   GPIO_NUM_21
-const int RESUME_PIN = 32; // START 기능
-const int STOP_PIN   = 26; // STOP 기능
-const int UP_PIN     = 33; // RPM UP
-const int DOWN_PIN   = 25; // RPM DOWN
+const int STATUS_LED = 27; // 통신 상태 LED
+const int RESUME_PIN = 32; // START 버튼
+const int STOP_PIN   = 26; // STOP 버튼
+const int UP_PIN     = 33; // RPM UP 버튼
+const int DOWN_PIN   = 25; // RPM DOWN 버튼
 
 Preferences prefs;
 byte mySA = 0x0B; 
@@ -29,9 +30,8 @@ volatile int currentRPM = 0;
 enum ControlState { IDLE, RUNNING, STOPPING };
 volatile ControlState currentState = IDLE;
 
-// --- 물리 버튼 상태 관리를 위한 변수 ---
 unsigned long lastBtnTime = 0;
-const int debounceDelay = 250; // 버튼 중복 입력 방지
+const int debounceDelay = 250;
 
 void sendAddressClaim() {
     twai_message_t msg;
@@ -40,21 +40,10 @@ void sendAddressClaim() {
     memcpy(msg.data, myNAME, 8);
     twai_transmit(&msg, pdMS_TO_TICKS(10));
     claimTimer = millis();
+    digitalWrite(STATUS_LED, HIGH); // 송신 시 LED 켬
 }
 
-// BLE 명령 처리
-class MyCallbacks : public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic *pCharacteristic) {
-        std::string value = pCharacteristic->getValue();
-        if (value.length() >= 2) {
-            uint8_t type = value[0];
-            uint8_t val  = value[1];
-            processCommand(type, val);
-        }
-    }
-};
-
-// 명령 통합 처리 함수 (BLE와 물리 버튼 공용)
+// 명령 처리 함수
 void processCommand(uint8_t type, uint8_t val) {
     if (type == 0xA1) { // Baud Rate
         int b = (val == 250) ? 250 : 500;
@@ -66,21 +55,33 @@ void processCommand(uint8_t type, uint8_t val) {
         addressConfirmed = false;
         sendAddressClaim();
     }
-    else if (type == 0xA3) { // START(1) / STOP(0)
+    else if (type == 0xA3) { // START/STOP
         if (val == 1) { currentState = RUNNING; if(targetRPM < 800) targetRPM = 800; }
         else { currentState = STOPPING; }
     }
-    else if (type == 0xA4) { // RPM UP(1) / DOWN(0)
+    else if (type == 0xA4) { // RPM UP/DOWN
         if (val == 1) targetRPM += 100;
         else targetRPM -= 100;
         targetRPM = constrain(targetRPM, 600, 2500);
     }
 }
 
+class MyCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+        std::string value = pCharacteristic->getValue();
+        if (value.length() >= 2) {
+            processCommand(value[0], value[1]);
+        }
+    }
+    void onConnect(BLEServer* pServer) { deviceConnected = true; }
+    void onDisconnect(BLEServer* pServer) { deviceConnected = false; BLEDevice::startAdvertising(); }
+};
+
 void CAN_Task(void *pvParameters) {
     twai_message_t rx_msg;
     while (1) {
         if (twai_receive(&rx_msg, pdMS_TO_TICKS(5)) == ESP_OK) {
+            digitalWrite(STATUS_LED, HIGH); // 메시지 수신 시 LED 켬
             if ((rx_msg.identifier & 0x00FFFF00) == 0x00F00400) {
                 currentRPM = (int)((rx_msg.data[4] | (rx_msg.data[5] << 8)) * 0.125);
             }
@@ -93,7 +94,8 @@ void CAN_Task(void *pvParameters) {
 void setup() {
     Serial.begin(115200);
     
-    // 버튼 핀 설정 (내부 풀업 사용)
+    // 핀 모드 설정
+    pinMode(STATUS_LED, OUTPUT);
     pinMode(RESUME_PIN, INPUT_PULLUP);
     pinMode(STOP_PIN,   INPUT_PULLUP);
     pinMode(UP_PIN,     INPUT_PULLUP);
@@ -126,7 +128,7 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // --- 물리 버튼 스캔 (디바운스 처리 포함) ---
+    // 물리 버튼 스캔
     if (now - lastBtnTime > debounceDelay) {
         if (digitalRead(RESUME_PIN) == LOW) { processCommand(0xA3, 1); lastBtnTime = now; }
         else if (digitalRead(STOP_PIN) == LOW) { processCommand(0xA3, 0); lastBtnTime = now; }
@@ -134,36 +136,40 @@ void loop() {
         else if (digitalRead(DOWN_PIN) == LOW) { processCommand(0xA4, 0); lastBtnTime = now; }
     }
 
-    // --- J1939 TSC1 메시지 송신 (10ms 간격) ---
+    // CAN 송신 및 LED 제어 (10ms 간격)
     static unsigned long lastTX = 0;
     if (now - lastTX >= 10) {
         if (currentState == RUNNING && addressConfirmed) {
+            digitalWrite(STATUS_LED, HIGH); // 송신 시 LED 켬
             uint16_t r = (uint16_t)(targetRPM / 0.125);
             twai_message_t tx;
             tx.identifier = 0x0C000000 | (0x00 << 8) | mySA;
             tx.extd = 1; tx.data_length_code = 8;
-            tx.data[0] = 0x01; // Speed Control Mode
+            tx.data[0] = 0x01;
             tx.data[1] = (uint8_t)(r & 0xFF);
             tx.data[2] = (uint8_t)(r >> 8);
             for(int i=3; i<8; i++) tx.data[i] = 0xFF;
             twai_transmit(&tx, pdMS_TO_TICKS(5));
         } 
         else if (currentState == STOPPING) {
-            targetRPM -= 10; // 점진적으로 RPM 감소
+            targetRPM -= 10;
             if (targetRPM <= 600) { currentState = IDLE; targetRPM = 0; }
         }
         lastTX = now;
     }
     
-    // --- BLE 상태 알림 (100ms 간격) ---
+    // BLE 데이터 전송 및 LED 끔 (100ms 간격)
     static unsigned long lastBLE = 0;
     if (now - lastBLE >= 100) {
-        uint8_t d[4] = { 
-            (uint8_t)(currentRPM & 0xFF), (uint8_t)(currentRPM >> 8),
-            (uint8_t)(targetRPM & 0xFF), (uint8_t)(targetRPM >> 8) 
-        };
-        pCharacteristic->setValue(d, 4);
-        pCharacteristic->notify();
+        if (pCharacteristic) {
+            uint8_t d[4] = { 
+                (uint8_t)(currentRPM & 0xFF), (uint8_t)(currentRPM >> 8),
+                (uint8_t)(targetRPM & 0xFF), (uint8_t)(targetRPM >> 8) 
+            };
+            pCharacteristic->setValue(d, 4);
+            pCharacteristic->notify();
+        }
+        digitalWrite(STATUS_LED, LOW); // 깜빡임 효과를 위해 주기적으로 끔
         lastBLE = now;
     }
 }
