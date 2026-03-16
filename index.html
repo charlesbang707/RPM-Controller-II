@@ -2,18 +2,26 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>J1939 Advanced Control</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 15px; }
+        body { 
+            font-family: -apple-system, sans-serif; 
+            text-align: center; 
+            background: #1a1a1a; 
+            color: white; 
+            margin: 0; 
+            padding: 15px;
+            /* 전체 화면에서 터치 확대 방지 보조 */
+            touch-action: pan-x pan-y;
+        }
         .card { max-width: 420px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .status-bar { font-size: 14px; padding: 10px; border-radius: 10px; margin-bottom: 15px; background: #3d3d3d; color: #ffbc00; }
         .connected { color: #00ff88 !important; border: 1px solid #00ff88; }
         
-        /* 설정 영역 */
         .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; padding: 10px; background: #383838; border-radius: 12px; }
-        select { width: 100%; padding: 8px; border-radius: 6px; background: #444; color: white; border: 1px solid #555; }
+        select { width: 100%; padding: 8px; border-radius: 6px; background: #444; color: white; border: 1px solid #555; font-size: 14px; }
         label { font-size: 11px; color: #aaa; display: block; margin-bottom: 5px; }
 
         .rpm-display { display: flex; justify-content: space-around; margin: 15px 0; }
@@ -21,7 +29,19 @@
         .rpm-val { font-size: 26px; font-weight: bold; color: #00ff88; font-family: monospace; }
         
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        button { padding: 16px; font-size: 16px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; transition: 0.2s; }
+        button { 
+            padding: 16px; 
+            font-size: 16px; 
+            font-weight: bold; 
+            border: none; 
+            border-radius: 12px; 
+            cursor: pointer; 
+            transition: 0.2s;
+            /* 버튼 클릭 시 화면 확대 방지 핵심 설정 */
+            touch-action: manipulation; 
+            -webkit-user-select: none;
+            user-select: none;
+        }
         .btn-conn { grid-column: span 2; background: #4a4a4a; color: white; margin-bottom: 10px; }
         .btn-start { background: #28a745; color: white; }
         .btn-stop { background: #dc3545; color: white; }
@@ -82,12 +102,24 @@
     const UUID_CHAR    = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
     let device, characteristic;
 
+    // 아날로그 게이지 초기 설정
     const gauge = new RadialGauge({
-        renderTo: 'rpmGauge', width: 280, height: 280, units: "RPM",
-        minValue: 0, maxValue: 3000, majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-        highlights: [{"from": 2500, "to": 3000, "color": "red"}],
-        colorPlate: "#2d2d2d", colorMajorTicks: "#eee", colorNumbers: "#eee",
-        needleType: "arrow", needleWidth: 3, animationDuration: 400, animationRule: "linear"
+        renderTo: 'rpmGauge', 
+        width: 300, 
+        height: 300, 
+        units: "RPM",
+        minValue: 0, 
+        maxValue: 3000, 
+        majorTicks: ["0","500","1000","1500","2000","2500","3000"],
+        colorPlate: "#2d2d2d", 
+        colorMajorTicks: "#eee", 
+        colorNumbers: "#eee",
+        needleType: "arrow", 
+        needleWidth: 3, 
+        animationDuration: 150, // 반응성을 위해 애니메이션 단축
+        animationRule: "linear",
+        // 타겟 RPM 표시를 위한 하이라이트 초기화
+        highlights: []
     }).draw();
 
     async function initBLE() {
@@ -99,34 +131,48 @@
             const service = await server.getPrimaryService(UUID_SERVICE);
             characteristic = await service.getCharacteristic(UUID_CHAR);
 
-            // [핵심] ESP32 데이터 수신 활성화
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', (e) => {
                 const v = e.target.value;
-                // ESP32: currentRPM(2bytes), targetRPM(2bytes) 
-                const cur = v.getUint8(0) | (v.getUint8(1) << 8);
-                const tar = v.getUint8(2) | (v.getUint8(3) << 8);
+                // ESP32에서 보낸 d[4] 해석 [cite: 47]
+                const cur = v.getUint8(0) | (v.getUint8(1) << 8); // currentRPM
+                const tar = v.getUint8(2) | (v.getUint8(3) << 8); // targetRPM
                 
                 document.getElementById('cur-val').innerText = cur.toString().padStart(4, '0');
                 document.getElementById('tar-val').innerText = tar.toString().padStart(4, '0');
+                
+                // 아날로그 게이지 바늘 업데이트
                 gauge.value = cur;
+                
+                // 타겟 RPM 아크(Arc) 실시간 업데이트 [하이라이트 기능 활용]
+                gauge.update({
+                    highlights: [
+                        { "from": 0, "to": tar, "color": "rgba(0, 255, 136, 0.3)" }, // 타겟까지 연한 녹색 아크
+                        { "from": 2500, "to": 3000, "color": "rgba(255, 0, 0, 0.7)" }  // 레드존 유지
+                    ]
+                });
             });
 
             statusEl.innerText = "System Connected";
             statusEl.classList.add('connected');
             document.getElementById('connBtn').style.display = 'none';
-        } catch (err) { console.error(err); document.getElementById('status').innerText = "Retry Connection"; }
+        } catch (err) { 
+            console.error(err); 
+            document.getElementById('status').innerText = "Retry Connection"; 
+        }
     }
 
     async function sendCmd(type, val) {
         if (!characteristic) return;
-        await characteristic.writeValue(new Uint8Array([type, val]));
+        try {
+            // Uint8Array 형식으로 명령 전송 [cite: 18]
+            await characteristic.writeValue(new Uint8Array([type, val]));
+        } catch (err) { console.error(err); }
     }
 
     async function sendConfig(type, val) {
         if (!characteristic) return;
-        const confirmChange = confirm("설정을 변경하시겠습니까? (장치가 재시작될 수 있습니다)");
-        if (confirmChange) {
+        if (confirm("설정을 변경하시겠습니까?")) {
             await characteristic.writeValue(new Uint8Array([type, parseInt(val)]));
         }
     }
