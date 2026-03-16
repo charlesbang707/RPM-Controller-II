@@ -13,13 +13,14 @@
             color: white; 
             margin: 0; 
             padding: 15px;
-            /* 전체 화면에서 터치 확대 방지 보조 */
+            /* 터치 확대 방지 보조 */
             touch-action: pan-x pan-y;
         }
         .card { max-width: 420px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .status-bar { font-size: 14px; padding: 10px; border-radius: 10px; margin-bottom: 15px; background: #3d3d3d; color: #ffbc00; }
         .connected { color: #00ff88 !important; border: 1px solid #00ff88; }
         
+        /* 설정 메뉴 스타일 */
         .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; padding: 10px; background: #383838; border-radius: 12px; }
         select { width: 100%; padding: 8px; border-radius: 6px; background: #444; color: white; border: 1px solid #555; font-size: 14px; }
         label { font-size: 11px; color: #aaa; display: block; margin-bottom: 5px; }
@@ -37,7 +38,7 @@
             border-radius: 12px; 
             cursor: pointer; 
             transition: 0.2s;
-            /* 버튼 클릭 시 화면 확대 방지 핵심 설정 */
+            /* 버튼 클릭 시 화면 확대 방지 */
             touch-action: manipulation; 
             -webkit-user-select: none;
             user-select: none;
@@ -59,7 +60,7 @@
     <div class="settings-grid">
         <div>
             <label>SOURCE ADDRESS</label>
-            <select id="sa-select" onchange="sendConfig(0xA2, this.value)">
+            <select id="sa-select" onchange="confirmAndSendConfig('SA', 0xA2, this.value)">
                 <option value="11">0x0B (기본)</option>
                 <option value="0">0x00 (엔진)</option>
                 <option value="33">0x21 (임시)</option>
@@ -68,7 +69,7 @@
         </div>
         <div>
             <label>BAUDRATE (kbps)</label>
-            <select id="baud-select" onchange="sendConfig(0xA1, this.value)">
+            <select id="baud-select" onchange="confirmAndSendConfig('Baudrate', 0xA1, this.value)">
                 <option value="500">500k</option>
                 <option value="250">250k</option>
             </select>
@@ -102,7 +103,7 @@
     const UUID_CHAR    = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
     let device, characteristic;
 
-    // 아날로그 게이지 초기 설정
+    // 게이지 초기화 (타겟 아크 포함)
     const gauge = new RadialGauge({
         renderTo: 'rpmGauge', 
         width: 300, 
@@ -116,9 +117,8 @@
         colorNumbers: "#eee",
         needleType: "arrow", 
         needleWidth: 3, 
-        animationDuration: 150, // 반응성을 위해 애니메이션 단축
+        animationDuration: 150, 
         animationRule: "linear",
-        // 타겟 RPM 표시를 위한 하이라이트 초기화
         highlights: []
     }).draw();
 
@@ -134,21 +134,19 @@
             await characteristic.startNotifications();
             characteristic.addEventListener('characteristicvaluechanged', (e) => {
                 const v = e.target.value;
-                // ESP32에서 보낸 d[4] 해석 [cite: 47]
-                const cur = v.getUint8(0) | (v.getUint8(1) << 8); // currentRPM
-                const tar = v.getUint8(2) | (v.getUint8(3) << 8); // targetRPM
+                // ESP32 데이터 해석 
+                const cur = v.getUint8(0) | (v.getUint8(1) << 8); 
+                const tar = v.getUint8(2) | (v.getUint8(3) << 8); 
                 
                 document.getElementById('cur-val').innerText = cur.toString().padStart(4, '0');
                 document.getElementById('tar-val').innerText = tar.toString().padStart(4, '0');
                 
-                // 아날로그 게이지 바늘 업데이트
                 gauge.value = cur;
-                
-                // 타겟 RPM 아크(Arc) 실시간 업데이트 [하이라이트 기능 활용]
+                // 타겟 RPM 아크 업데이트
                 gauge.update({
                     highlights: [
-                        { "from": 0, "to": tar, "color": "rgba(0, 255, 136, 0.3)" }, // 타겟까지 연한 녹색 아크
-                        { "from": 2500, "to": 3000, "color": "rgba(255, 0, 0, 0.7)" }  // 레드존 유지
+                        { "from": 0, "to": tar, "color": "rgba(0, 255, 136, 0.3)" },
+                        { "from": 2500, "to": 3000, "color": "rgba(255, 0, 0, 0.7)" }
                     ]
                 });
             });
@@ -157,7 +155,6 @@
             statusEl.classList.add('connected');
             document.getElementById('connBtn').style.display = 'none';
         } catch (err) { 
-            console.error(err); 
             document.getElementById('status').innerText = "Retry Connection"; 
         }
     }
@@ -165,15 +162,24 @@
     async function sendCmd(type, val) {
         if (!characteristic) return;
         try {
-            // Uint8Array 형식으로 명령 전송 [cite: 18]
             await characteristic.writeValue(new Uint8Array([type, val]));
         } catch (err) { console.error(err); }
     }
 
-    async function sendConfig(type, val) {
-        if (!characteristic) return;
-        if (confirm("설정을 변경하시겠습니까?")) {
+    // 설정 변경 확인 팝업창 (예/아니오)
+    async function confirmAndSendConfig(label, type, val) {
+        if (!characteristic) {
+            alert("먼저 시스템을 연결해 주세요.");
+            return;
+        }
+        
+        // 브라우저 기본 confirm은 확인/취소로 표시되나, 
+        // iOS Bluefy 웹뷰 환경에 따라 시스템 언어에 맞춰 표시됩니다.
+        if (confirm(`${label} 설정을 변경하시겠습니까?\n변경 시 시스템이 재시작될 수 있습니다.`)) {
+            // "예(확인)" 클릭 시 실행
             await characteristic.writeValue(new Uint8Array([type, parseInt(val)]));
+        } else {
+            // "아니오(취소)" 클릭 시 아무것도 하지 않음
         }
     }
 </script>
