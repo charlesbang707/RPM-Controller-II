@@ -1,81 +1,144 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
     <meta charset="UTF-8">
-    <title>Truck RPM Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>J1939 RPM Controller</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { background: #1a1a1a; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; max-width: 380px; margin: auto; }
-        .btn { padding: 20px; border-radius: 12px; font-weight: bold; border: none; cursor: pointer; color: white; box-shadow: 0 6px 0 rgba(0,0,0,0.5); }
-        .resume { background: #2ecc71; } .up { background: #3498db; } .stop { background: #e74c3c; } .down { background: #f39c12; }
-        .active { color: #3498db; border: 1px solid #3498db; }
+        body { font-family: sans-serif; text-align: center; background: #222; color: white; margin: 0; padding: 20px; }
+        .container { max-width: 400px; margin: auto; background: #333; padding: 20px; border-radius: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .status { font-size: 0.9em; color: #aaa; margin-bottom: 20px; }
+        .info-box { display: flex; justify-content: space-around; margin: 20px 0; }
+        .val { font-size: 24px; font-weight: bold; color: #00ff00; }
+        .label { font-size: 12px; color: #ccc; }
+        button { width: 100%; padding: 15px; margin: 5px 0; font-size: 18px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+        .btn-connect { background: #444; color: white; }
+        .btn-start { background: #28a745; color: white; }
+        .btn-stop { background: #dc3545; color: white; }
+        .btn-up { background: #007bff; color: white; }
+        .btn-down { background: #6c757d; color: white; }
+        button:active { opacity: 0.7; }
     </style>
 </head>
 <body>
-    <button id="connectBtn" style="padding:10px 20px; border-radius:8px;" onclick="toggleConnection()">CONNECT</button>
-    <div id="status" style="margin:10px; color:#888;">Ready</div>
+
+<div class="container">
+    <h2>RPM CONTROL</h2>
+    <div id="status" class="status">Disconnected</div>
+
     <canvas id="gauge-rpm"></canvas>
-    <h1 id="rpmVal">0</h1>
-    <div style="margin:20px;">
-        <button id="btn250" class="active" onclick="sendCmd(0x2500)">250k</button>
-        <button id="btn500" onclick="sendCmd(0x5000)">500k</button>
+
+    <div class="info-box">
+        <div>
+            <div id="cur-rpm" class="val">0</div>
+            <div class="label">CURRENT RPM</div>
+        </div>
+        <div>
+            <div id="tar-rpm" class="val">0</div>
+            <div class="label">TARGET RPM</div>
+        </div>
     </div>
-    <div class="grid">
-        <button class="btn resume" onclick="sendCmd(1000)">RESUME</button>
-        <button class="btn up" onclick="sendCmd(1)">UP</button>
-        <button class="btn stop" onclick="sendCmd(600)">STOP</button>
-        <button class="btn down" onclick="sendCmd(2)">DOWN</button>
+
+    <button class="btn-connect" onclick="connectBLE()">CONNECT</button>
+    <button class="btn-start" onclick="sendCommand(0xA3, 1)">START / RESUME</button>
+    <button class="btn-stop" onclick="sendCommand(0xA3, 0)">STOP</button>
+    <div style="display: flex; gap: 10px;">
+        <button class="btn-up" onclick="sendCommand(0xA4, 1)">UP (+100)</button>
+        <button class="btn-down" onclick="sendCommand(0xA4, 0)">DOWN (-100)</button>
     </div>
+</div>
 
-    <script>
-        let device, characteristic;
-        const S_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-        const C_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+<script>
+    // UUID 설정 (ESP32 코드와 동일해야 함)
+    const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+    const CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 
-        const gauge = new RadialGauge({
-            renderTo: 'gauge-rpm', width: 280, height: 280, minValue: 0, maxValue: 3000,
-            majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-            colorPlate: "#1a1a1a", colorNumbers: "#fff", needleType: "arrow",
-            highlights: [], highlightsWidth: 12, valueBox: false, animationDuration: 150
-        }).draw();
+    let bleDevice;
+    let bleCharacteristic;
 
-        async function toggleConnection() {
-            try {
-                device = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: "Truck_RPM_Control" }],
-                    optionalServices: [S_UUID]
-                });
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService(S_UUID);
-                characteristic = await service.getCharacteristic(C_UUID);
-                await characteristic.startNotifications();
-                characteristic.addEventListener('characteristicvaluechanged', (e) => {
-                    const v = e.target.value;
-                    const cur = v.getUint16(0, true);
-                    const tar = v.getUint16(2, true);
-                    gauge.value = cur;
-                    document.getElementById('rpmVal').innerText = cur;
-                    
-                    // [기능 추가] Target RPM에 따른 테두리 아크 표시
-                    if (tar > 0) {
-                        const col = tar > 1800 ? "rgba(231, 76, 60, 0.7)" : "rgba(255, 204, 0, 0.5)";
-                        gauge.update({ highlights: [{ from: 0, to: tar, color: col }] });
-                    } else { gauge.update({ highlights: [] }); }
-                });
-                document.getElementById('status').innerText = "Connected";
-            } catch (err) { console.error(err); }
+    // 1. 게이지 초기화
+    var gauge = new RadialGauge({
+        renderTo: 'gauge-rpm',
+        width: 300,
+        height: 300,
+        units: "RPM",
+        minValue: 0,
+        maxValue: 3000,
+        majorTicks: ["0", "500", "1000", "1500", "2000", "2500", "3000"],
+        minorTicks: 2,
+        strokeTicks: true,
+        highlights: [{ "from": 2300, "to": 3000, "color": "rgba(200, 50, 50, .75)" }],
+        colorPlate: "#333",
+        colorMajorTicks: "#f5f5f5",
+        colorMinorTicks: "#ddd",
+        colorTitle: "#eee",
+        colorUnits: "#ccc",
+        colorNumbers: "#eee",
+        needleType: "arrow",
+        needleWidth: 2,
+        animationDuration: 500,
+        animationRule: "linear"
+    }).draw();
+
+    // 2. BLE 연결 함수
+    async function connectBLE() {
+        try {
+            document.getElementById('status').innerText = "Searching...";
+            bleDevice = await navigator.bluetooth.requestDevice({
+                filters: [{ services: [SERVICE_UUID] }]
+            });
+
+            const server = await bleDevice.gatt.connect();
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+            // 알림(Notify) 구독 시작
+            await bleCharacteristic.startNotifications();
+            bleCharacteristic.addEventListener('characteristicvaluechanged', handleDataChanged);
+
+            document.getElementById('status').innerText = "Connected: " + bleDevice.name;
+            document.getElementById('status').style.color = "#00ff00";
+
+            bleDevice.addEventListener('gattserverdisconnected', () => {
+                document.getElementById('status').innerText = "Disconnected";
+                document.getElementById('status').style.color = "#ff0000";
+            });
+
+        } catch (error) {
+            console.error(error);
+            document.getElementById('status').innerText = "Error: " + error;
         }
+    }
 
-        async function sendCmd(val) {
-            if (characteristic) {
-                await characteristic.writeValue(new Uint16Array([val]));
-                if(val === 0x2500 || val === 0x5000) {
-                    document.getElementById('btn250').className = (val === 0x2500 ? "active" : "");
-                    document.getElementById('btn500').className = (val === 0x5000 ? "active" : "");
-                }
-            }
+    // 3. ESP32에서 오는 데이터 처리 (Notify)
+    function handleDataChanged(event) {
+        const value = event.target.value; // DataView 형식
+        
+        // 4바이트 데이터 해석 (ESP32: currentL, currentH, targetL, targetH)
+        let currentRPM = value.getUint8(0) | (value.getUint8(1) << 8);
+        let targetRPM = value.getUint8(2) | (value.getUint8(3) << 8);
+
+        // 화면 갱신
+        document.getElementById('cur-rpm').innerText = currentRPM;
+        document.getElementById('tar-rpm').innerText = targetRPM;
+        gauge.value = currentRPM;
+    }
+
+    // 4. ESP32로 명령 전송 함수
+    async function sendCommand(type, val) {
+        if (!bleCharacteristic) {
+            alert("Please connect to Bluetooth first!");
+            return;
         }
-    </script>
+        try {
+            const data = new Uint8Array([type, val]);
+            await bleCharacteristic.writeValue(data);
+        } catch (error) {
+            console.error("Send Error:", error);
+        }
+    }
+</script>
+
 </body>
 </html>
