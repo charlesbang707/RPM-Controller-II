@@ -1,118 +1,79 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>J1939 RPM CONTROL</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>J1939 MASTER</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { background: #1a1a1a; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .card { max-width: 400px; margin: auto; background: #262626; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .status-bar { background: #333; padding: 10px; border-radius: 10px; margin-bottom: 15px; font-weight: bold; color: #ff4b2b; }
-        .status-bar.on { color: #00ff88; border: 1px solid #00ff88; }
-        .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-        select { background: #3d3d3d; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; font-size: 14px; }
-        .val-display { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
-        .val-box { background: #333; padding: 10px; border-radius: 10px; }
-        .val-box div { font-size: 24px; font-weight: bold; }
-        .val-box.cur { color: #00ff88; }
-        .val-box.tar { color: #ffcc00; }
-        button { width: 100%; padding: 15px; margin: 5px 0; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; color: white; transition: 0.2s; }
-        .btn-conn { background: #007aff; margin-bottom: 15px; }
-        .btn-start { background: #28a745; }
-        .btn-stop { background: #dc3545; }
-        .btn-step { background: #4a4a4a; }
+        body { background: #111; color: #eee; font-family: sans-serif; text-align: center; padding: 20px; }
+        .card { max-width: 400px; margin: auto; background: #222; padding: 20px; border-radius: 20px; border: 1px solid #333; }
+        .row { display: flex; gap: 10px; margin-bottom: 15px; }
+        .col { flex: 1; }
+        select { width: 100%; padding: 10px; background: #333; color: white; border-radius: 8px; border: none; }
+        .status { padding: 10px; margin-bottom: 20px; border-radius: 10px; background: #333; font-weight: bold; color: #ff4b2b; }
+        .status.on { color: #00ff88; border: 1px solid #00ff88; }
+        button { width: 100%; padding: 15px; margin: 5px 0; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; color: white; }
+        .btn-blue { background: #007aff; }
+        .btn-green { background: #28a745; }
+        .btn-red { background: #dc3545; }
+        .btn-gray { background: #555; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h3>J1939 RPM CONTROL</h3>
-        <div id="stat" class="status-bar">DISCONNECTED</div>
-        
-        <div class="settings">
-            <div>
-                <small>SOURCE ADDR</small>
-                <select id="saSel" onchange="updateSA()">
-                    <option value="11">0x0B (기본)</option>
-                    <option value="128">0x80 (시뮬레이터)</option>
-                    <option value="44">0x2C (대체)</option>
+        <h3>J1939 MASTER CONTROL</h3>
+        <div id="st" class="status">DISCONNECTED</div>
+        <div class="row">
+            <div class="col"><small>SOURCE ADDR</small>
+                <select id="sa" onchange="sendCmd(0xA2, this.value)">
+                    <option value="11">0x0B (Default)</option>
+                    <option value="128">0x80 (Sim)</option>
+                    <option value="44">0x2C (Alt)</option>
                 </select>
             </div>
-            <div>
-                <small>BAUDRATE</small>
-                <select id="bdSel" onchange="updateBaud()">
+            <div class="col"><small>BAUDRATE</small>
+                <select id="bd" onchange="if(confirm('Reboot?')) sendCmd(0xA1, this.value)">
                     <option value="500">500k</option>
                     <option value="250">250k</option>
                 </select>
             </div>
         </div>
-
-        <button id="connBtn" class="btn-conn" onclick="connect()">CONNECT SYSTEM</button>
-        <canvas id="gauge"></canvas>
-
-        <div class="val-display">
-            <div class="val-box cur"><div id="curR">0</div><small>CURRENT</small></div>
-            <div class="val-box tar"><div id="tarR">1000</div><small>TARGET</small></div>
+        <button id="cb" class="btn-blue" onclick="conn()">CONNECT DEVICE</button>
+        <canvas id="gg"></canvas>
+        <div class="row">
+            <div class="col"><h2 id="cr" style="color:#00ff88; margin:0;">0</h2><small>CURRENT</small></div>
+            <div class="col"><h2 id="tr" style="color:#ffcc00; margin:0;">1000</h2><small>TARGET</small></div>
         </div>
-
-        <div style="display: flex; gap: 10px;">
-            <button class="btn-start" onclick="send(0xA3, 1)">START</button>
-            <button class="btn-stop" onclick="send(0xA3, 0)">STOP</button>
-        </div>
-        <div style="display: flex; gap: 10px;">
-            <button class="btn-step" onclick="send(0xA4, 1)">UP</button>
-            <button class="btn-step" onclick="send(0xA4, 0)">DOWN</button>
-        </div>
+        <div class="row"><button class="btn-green" onclick="sendCmd(0xA3, 1)">START</button><button class="btn-red" onclick="sendCmd(0xA3, 0)">STOP</button></div>
+        <div class="row"><button class="btn-gray" onclick="sendCmd(0xA4, 1)">RPM UP</button><button class="btn-gray" onclick="sendCmd(0xA4, 0)">RPM DOWN</button></div>
     </div>
-
     <script>
-        let char;
-        const gauge = new RadialGauge({
-            renderTo: 'gauge', width: 300, height: 300, units: "RPM", minValue: 0, maxValue: 3000,
+        let ch;
+        const g = new RadialGauge({
+            renderTo: 'gg', width: 300, height: 300, units: "RPM", minValue: 0, maxValue: 3000,
             majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-            colorPlate: "#262626", colorNumbers: "#ccc", colorMajorTicks: "#888",
-            colorNeedle: "#ff3b30", borderShadowWidth: 0, needleType: "arrow"
+            colorPlate: "#222", colorNumbers: "#eee", colorMajorTicks: "#888", colorNeedle: "#ff3b30"
         }).draw();
-
-        async function connect() {
+        async function conn() {
             try {
-                const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: ["6e400001-b5a3-f393-e0a9-e50e24dcca9e"] }] });
-                const server = await dev.gatt.connect();
-                const service = await server.getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
-                char = await service.getCharacteristic("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
-                await char.startNotifications();
-                char.addEventListener('characteristicvaluechanged', (e) => {
+                const d = await navigator.bluetooth.requestDevice({ filters: [{ services: ["6e400001-b5a3-f393-e0a9-e50e24dcca9e"] }] });
+                const s = await d.gatt.connect();
+                const sv = await s.getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+                ch = await sv.getCharacteristic("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
+                await ch.startNotifications();
+                ch.addEventListener('characteristicvaluechanged', (e) => {
                     const v = e.target.value;
                     const cur = v.getUint8(0) | (v.getUint8(1) << 8);
                     const tar = v.getUint8(2) | (v.getUint8(3) << 8);
-                    gauge.value = cur;
-                    document.getElementById('curR').innerText = cur;
-                    document.getElementById('tarR').innerText = tar;
+                    g.value = cur; document.getElementById('cr').innerText = cur; document.getElementById('tr').innerText = tar;
                 });
-                document.getElementById('stat').innerText = "SYSTEM CONNECTED";
-                document.getElementById('stat').className = "status-bar on";
-                document.getElementById('connBtn').style.display = "none";
-            } catch (err) { alert("연결 실패: " + err); }
+                document.getElementById('st').innerText = "CONNECTED";
+                document.getElementById('st').className = "status on";
+                document.getElementById('cb').style.display = "none";
+            } catch (e) { alert(e); }
         }
-
-        async function updateSA() {
-            const sa = document.getElementById('saSel').value;
-            await send(0xA2, parseInt(sa));
-            alert("Source Address가 설정되었습니다.");
-        }
-
-        async function updateBaud() {
-            const bd = document.getElementById('bdSel').value;
-            if(confirm("Baudrate를 " + bd + "k로 변경 후 기기를 리셋하시겠습니까?")) {
-                await send(0xA1, parseInt(bd));
-            }
-        }
-
-        async function send(t, v) {
-            if(char) {
-                await char.writeValue(new Uint8Array([t, v]));
-            }
-        }
+        async function sendCmd(t, v) { if(ch) await ch.writeValue(new Uint8Array([t, parseInt(v)])); }
     </script>
 </body>
 </html>
