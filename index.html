@@ -1,101 +1,105 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>J1939 RPM Controller</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>J1939 Control System</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { background: #1a1a1a; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
-        .container { max-width: 400px; margin: auto; background: #262626; padding: 20px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-        .status { padding: 10px; margin-bottom: 20px; border-radius: 5px; font-weight: bold; background: #444; color: #aaa; }
-        .status.connected { background: #1b4d3e; color: #00ff88; }
-        .gauge-container { margin: 20px 0; }
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        button { padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .btn-main { background: #007bff; color: white; grid-column: span 2; margin-bottom: 10px; }
-        .btn-start { background: #28a745; color: white; }
-        .btn-stop { background: #dc3545; color: white; }
-        .btn-up { background: #4e4e4e; color: white; }
-        .btn-down { background: #4e4e4e; color: white; }
-        .data-display { display: flex; justify-content: space-around; margin-top: 20px; background: #333; padding: 15px; border-radius: 10px; }
-        .data-label { font-size: 12px; color: #888; }
-        .data-value { font-size: 20px; font-weight: bold; }
+        body { background: #121212; color: #e0e0e0; font-family: -apple-system, sans-serif; text-align: center; margin: 0; padding: 20px; }
+        .main-card { max-width: 400px; margin: auto; background: #1e1e1e; padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .header-panel { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #2c2c2c; padding: 10px 15px; border-radius: 12px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff4b2b; display: inline-block; margin-right: 5px; }
+        .status-dot.on { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
+        select { background: #333; color: white; border: 1px solid #444; padding: 5px; border-radius: 5px; }
+        .gauge-box { margin: 20px 0; }
+        .val-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+        .val-card { background: #252525; padding: 15px; border-radius: 15px; border: 1px solid #333; }
+        .val-num { font-size: 28px; font-weight: bold; margin-bottom: 5px; }
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        button { padding: 18px; font-size: 16px; font-weight: bold; border: none; border-radius: 14px; cursor: pointer; color: white; transition: 0.2s; }
+        .btn-conn { background: #007aff; width: 100%; margin-bottom: 15px; }
+        .btn-start { background: #34c759; }
+        .btn-stop { background: #ff3b30; }
+        .btn-up { background: #5856d6; }
+        .btn-down { background: #8e8e93; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>J1939 RPM CONTROL</h2>
-        <div id="status" class="status">SYSTEM DISCONNECTED</div>
-        <button id="connectBtn" class="btn-main" onclick="connectBLE()">CONNECT SYSTEM</button>
-        
-        <div class="gauge-container">
-            <canvas id="rpmGauge"></canvas>
+    <div class="main-card">
+        <div class="header-panel">
+            <div><span id="dot" class="status-dot"></span> <small id="statusText">DISCONNECTED</small></div>
+            <select id="baudRate" onchange="setBaud()">
+                <option value="500">500k</option>
+                <option value="250">250k</option>
+            </select>
         </div>
 
-        <div class="btn-group">
-            <button class="btn-start" onclick="sendCommand(0xA3, 1)">START</button>
-            <button class="btn-stop" onclick="sendCommand(0xA3, 0)">STOP</button>
-            <button class="btn-up" onclick="sendCommand(0xA4, 1)">RPM UP</button>
-            <button class="btn-down" onclick="sendCommand(0xA4, 0)">RPM DOWN</button>
+        <button id="connBtn" class="btn-conn" onclick="connect()">CONNECT TO DEVICE</button>
+
+        <div class="gauge-box">
+            <canvas id="gauge"></canvas>
         </div>
 
-        <div class="data-display">
-            <div><div class="data-label">CURRENT</div><div id="curRpm" class="data-value" style="color:#00ff88">0</div></div>
-            <div><div class="data-label">TARGET</div><div id="tarRpm" class="data-value" style="color:#ffcc00">1000</div></div>
+        <div class="val-grid">
+            <div class="val-card"><div id="curVal" class="val-num" style="color:#00ff88">0</div><small>CURRENT RPM</small></div>
+            <div class="val-card"><div id="tarVal" class="val-num" style="color:#ffcc00">1000</div><small>TARGET RPM</small></div>
+        </div>
+
+        <div class="btn-grid">
+            <button class="btn-start" onclick="send(0xA3, 1)">START</button>
+            <button class="btn-stop" onclick="send(0xA3, 0)">STOP</button>
+            <button class="btn-up" onclick="send(0xA4, 1)">UP</button>
+            <button class="btn-down" onclick="send(0xA4, 0)">DOWN</button>
         </div>
     </div>
 
     <script>
-        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        const CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-        let bluetoothChar;
+        const S_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const C_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        let char;
 
         const gauge = new RadialGauge({
-            renderTo: 'rpmGauge', width: 280, height: 280, units: "RPM", minValue: 0, maxValue: 3000,
+            renderTo: 'gauge', width: 280, height: 280, units: "RPM", minValue: 0, maxValue: 3000,
             majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-            colorPlate: "#262626", colorMajorTicks: "#ddd", colorNumbers: "#ddd",
-            colorNeedle: "#f03e3e", colorNeedleEnd: "#f03e3e",
-            highlights: [{ from: 2500, to: 3000, color: "rgba(200, 50, 50, .75)" }],
-            animationDuration: 1500, animationRule: "linear"
+            colorPlate: "#1e1e1e", colorMajorTicks: "#777", colorNumbers: "#aaa",
+            colorNeedle: "#ff3b30", colorNeedleEnd: "#ff3b30", borderShadowWidth: 0,
+            highlights: [{ from: 2500, to: 3000, color: "rgba(255, 59, 48, 0.3)" }]
         }).draw();
 
-        async function connectBLE() {
+        async function connect() {
             try {
-                const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ services: [SERVICE_UUID] }]
+                const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [S_UUID] }] });
+                const server = await dev.gatt.connect();
+                const service = await server.getPrimaryService(S_UUID);
+                char = await service.getCharacteristic(C_UUID);
+                await char.startNotifications();
+                char.addEventListener('characteristicvaluechanged', (e) => {
+                    const v = e.target.value;
+                    const cur = v.getUint8(0) | (v.getUint8(1) << 8);
+                    const tar = v.getUint8(2) | (v.getUint8(3) << 8);
+                    gauge.value = cur;
+                    document.getElementById('curVal').innerText = cur;
+                    document.getElementById('tarVal').innerText = tar;
                 });
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService(SERVICE_UUID);
-                bluetoothChar = await service.getCharacteristic(CHAR_UUID);
-                
-                await bluetoothChar.startNotifications();
-                bluetoothChar.addEventListener('characteristicvaluechanged', (event) => {
-                    const view = event.target.value;
-                    const current = view.getUint8(0) | (view.getUint8(1) << 8);
-                    const target = view.getUint8(2) | (view.getUint8(3) << 8);
-                    gauge.value = current;
-                    document.getElementById('curRpm').innerText = current;
-                    document.getElementById('tarRpm').innerText = target;
-                });
+                document.getElementById('dot').className = "status-dot on";
+                document.getElementById('statusText').innerText = "CONNECTED";
+                document.getElementById('connBtn').style.display = "none";
+                dev.addEventListener('gattserverdisconnected', () => location.reload());
+            } catch (err) { alert(err); }
+        }
 
-                document.getElementById('status').innerText = "SYSTEM CONNECTED";
-                document.getElementById('status').classList.add('connected');
-                document.getElementById('connectBtn').style.display = 'none';
-                
-                device.addEventListener('gattserverdisconnected', () => {
-                    location.reload();
-                });
-            } catch (error) {
-                console.log(error);
-                alert("Connection Failed: " + error);
+        async function setBaud() {
+            const b = document.getElementById('baudRate').value;
+            if(confirm("Baudrate를 " + b + "k로 변경하고 장치를 재부팅할까요?")) {
+                await send(0xA1, parseInt(b));
             }
         }
 
-        async function sendCommand(type, val) {
-            if (bluetoothChar) {
-                const data = new Uint8Array([type, val]);
-                await bluetoothChar.writeValue(data);
+        async function send(t, v) {
+            if(char) {
+                const d = new Uint8Array([t, v]);
+                await char.writeValue(d);
             }
         }
     </script>
