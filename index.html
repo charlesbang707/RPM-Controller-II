@@ -1,79 +1,103 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>J1939 RPM Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>J1939 RPM Controller</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 15px; }
-        .card { max-width: 420px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 20px; }
-        .status-bar { font-size: 14px; padding: 10px; border-radius: 10px; margin-bottom: 15px; background: #3d3d3d; color: #ffbc00; }
-        .connected { color: #00ff88 !important; border: 1px solid #00ff88; }
-        .val-container { display: flex; gap: 10px; margin: 15px 0; }
-        .val-box { flex: 1; background: #333; padding: 12px; border-radius: 10px; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        button { padding: 18px; font-size: 16px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; }
-        .btn-conn { background: #007bff; color: white; width: 100%; margin-bottom: 10px; }
-        .btn-disc { background: #dc3545; color: white; width: 100%; margin-bottom: 10px; display: none; }
+        body { background: #1a1a1a; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 20px; }
+        .container { max-width: 400px; margin: auto; background: #262626; padding: 20px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .status { padding: 10px; margin-bottom: 20px; border-radius: 5px; font-weight: bold; background: #444; color: #aaa; }
+        .status.connected { background: #1b4d3e; color: #00ff88; }
+        .gauge-container { margin: 20px 0; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-main { background: #007bff; color: white; grid-column: span 2; margin-bottom: 10px; }
+        .btn-start { background: #28a745; color: white; }
+        .btn-stop { background: #dc3545; color: white; }
+        .btn-up { background: #4e4e4e; color: white; }
+        .btn-down { background: #4e4e4e; color: white; }
+        .data-display { display: flex; justify-content: space-around; margin-top: 20px; background: #333; padding: 15px; border-radius: 10px; }
+        .data-label { font-size: 12px; color: #888; }
+        .data-value { font-size: 20px; font-weight: bold; }
     </style>
 </head>
 <body>
-<div class="card">
-    <div id="status" class="status-bar">Disconnected</div>
-    <button id="connBtn" class="btn-conn" onclick="initBLE()">CONNECT SYSTEM</button>
-    <button id="discBtn" class="btn-disc" onclick="disconnect()">DISCONNECT</button>
-    
-    <canvas id="gauge"></canvas>
-    
-    <div class="val-container">
-        <div class="val-box"><div id="cur" style="color:#00ff88; font-size:24px;">0</div><small>CURRENT</small></div>
-        <div class="val-box"><div id="tar" style="color:#ffbc00; font-size:24px;">0</div><small>TARGET</small></div>
+    <div class="container">
+        <h2>J1939 RPM CONTROL</h2>
+        <div id="status" class="status">SYSTEM DISCONNECTED</div>
+        <button id="connectBtn" class="btn-main" onclick="connectBLE()">CONNECT SYSTEM</button>
+        
+        <div class="gauge-container">
+            <canvas id="rpmGauge"></canvas>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn-start" onclick="sendCommand(0xA3, 1)">START</button>
+            <button class="btn-stop" onclick="sendCommand(0xA3, 0)">STOP</button>
+            <button class="btn-up" onclick="sendCommand(0xA4, 1)">RPM UP</button>
+            <button class="btn-down" onclick="sendCommand(0xA4, 0)">RPM DOWN</button>
+        </div>
+
+        <div class="data-display">
+            <div><div class="data-label">CURRENT</div><div id="curRpm" class="data-value" style="color:#00ff88">0</div></div>
+            <div><div class="data-label">TARGET</div><div id="tarRpm" class="data-value" style="color:#ffcc00">1000</div></div>
+        </div>
     </div>
 
-    <div class="controls">
-        <button style="background:#28a745; color:white;" onclick="send(0xA3, 1)">START</button>
-        <button style="background:#dc3545; color:white;" onclick="send(0xA3, 0)">STOP</button>
-        <button style="background:#007bff; color:white;" onclick="send(0xA4, 1)">UP</button>
-        <button style="background:#6c757d; color:white;" onclick="send(0xA4, 0)">DOWN</button>
-    </div>
-</div>
+    <script>
+        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        let bluetoothChar;
 
-<script>
-    const S_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-    const C_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-    let dev, char;
+        const gauge = new RadialGauge({
+            renderTo: 'rpmGauge', width: 280, height: 280, units: "RPM", minValue: 0, maxValue: 3000,
+            majorTicks: ["0","500","1000","1500","2000","2500","3000"],
+            colorPlate: "#262626", colorMajorTicks: "#ddd", colorNumbers: "#ddd",
+            colorNeedle: "#f03e3e", colorNeedleEnd: "#f03e3e",
+            highlights: [{ from: 2500, to: 3000, color: "rgba(200, 50, 50, .75)" }],
+            animationDuration: 1500, animationRule: "linear"
+        }).draw();
 
-    const gauge = new RadialGauge({
-        renderTo: 'gauge', width: 300, height: 300, units: "RPM", minValue: 0, maxValue: 3000,
-        majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-        colorPlate: "#2d2d2d", colorMajorTicks: "#eee", colorNumbers: "#eee", animation: true
-    }).draw();
+        async function connectBLE() {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [SERVICE_UUID] }]
+                });
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                bluetoothChar = await service.getCharacteristic(CHAR_UUID);
+                
+                await bluetoothChar.startNotifications();
+                bluetoothChar.addEventListener('characteristicvaluechanged', (event) => {
+                    const view = event.target.value;
+                    const current = view.getUint8(0) | (view.getUint8(1) << 8);
+                    const target = view.getUint8(2) | (view.getUint8(3) << 8);
+                    gauge.value = current;
+                    document.getElementById('curRpm').innerText = current;
+                    document.getElementById('tarRpm').innerText = target;
+                });
 
-    async function initBLE() {
-        try {
-            dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [S_UUID] }] });
-            const server = await dev.gatt.connect();
-            const service = await server.getPrimaryService(S_UUID);
-            char = await service.getCharacteristic(C_UUID);
-            await char.startNotifications();
-            char.oncharacteristicvaluechanged = (e) => {
-                const v = e.target.value;
-                const cur = v.getUint8(0) | (v.getUint8(1) << 8);
-                const tar = v.getUint8(2) | (v.getUint8(3) << 8);
-                gauge.value = cur;
-                document.getElementById('cur').innerText = cur;
-                document.getElementById('tar').innerText = tar;
-            };
-            document.getElementById('status').innerText = "Connected";
-            document.getElementById('status').className = "status-bar connected";
-            document.getElementById('connBtn').style.display = 'none';
-            document.getElementById('discBtn').style.display = 'block';
-        } catch (e) { console.log(e); }
-    }
+                document.getElementById('status').innerText = "SYSTEM CONNECTED";
+                document.getElementById('status').classList.add('connected');
+                document.getElementById('connectBtn').style.display = 'none';
+                
+                device.addEventListener('gattserverdisconnected', () => {
+                    location.reload();
+                });
+            } catch (error) {
+                console.log(error);
+                alert("Connection Failed: " + error);
+            }
+        }
 
-    function disconnect() { if(dev) { dev.gatt.disconnect(); location.reload(); } }
-    async function send(t, v) { if(char) await char.writeValue(new Uint8Array([t, v])); }
-</script>
+        async function sendCommand(type, val) {
+            if (bluetoothChar) {
+                const data = new Uint8Array([type, val]);
+                await bluetoothChar.writeValue(data);
+            }
+        }
+    </script>
 </body>
 </html>
