@@ -3,130 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>J1939 RPM Control</title>
+    <title>J1939 Truck Control</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 15px; touch-action: manipulation; }
-        .card { max-width: 420px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .card { max-width: 420px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; }
         .status-bar { font-size: 14px; padding: 10px; border-radius: 10px; margin-bottom: 15px; background: #3d3d3d; color: #ffbc00; border: 1px solid transparent; }
         .connected { color: #00ff88 !important; border-color: #00ff88; }
         .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; padding: 10px; background: #383838; border-radius: 12px; }
         select { width: 100%; padding: 10px; border-radius: 6px; background: #444; color: white; border: 1px solid #555; font-size: 14px; }
-        .rpm-display { display: flex; justify-content: space-around; margin: 15px 0; }
-        .rpm-box { background: #3d3d3d; padding: 12px; border-radius: 12px; width: 45%; }
-        .rpm-val { font-size: 26px; font-weight: bold; color: #00ff88; font-family: monospace; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         button { padding: 16px; font-size: 16px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; -webkit-user-select: none; }
-        .btn-conn { grid-column: span 2; background: #4a4a4a; color: white; margin-bottom: 10px; }
-        .btn-start { background: #28a745; } .btn-stop { background: #dc3545; }
-        .btn-up { background: #007bff; } .btn-down { background: #6c757d; }
+        .btn-conn { grid-column: span 2; background: #4a4a4a; color: white; }
         
-        /* 커스텀 팝업 */
-        #popup-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index: 100; }
-        #popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; background: #333; padding: 20px; border-radius: 15px; z-index: 101; border: 1px solid #555; }
-        .popup-btns { display: flex; gap: 10px; margin-top: 20px; }
-        .popup-btns button { flex: 1; padding: 12px; border-radius: 8px; }
+        /* 예/아니오 팝업 */
+        #popup-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index: 100; }
+        #popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; max-width: 320px; background: #333; padding: 25px; border-radius: 20px; z-index: 101; border: 1px solid #555; }
+        .popup-btns { display: flex; gap: 12px; margin-top: 25px; }
+        .popup-btns button { flex: 1; padding: 14px; border-radius: 10px; font-size: 16px; }
     </style>
 </head>
 <body>
 
 <div id="popup-overlay"></div>
 <div id="popup">
-    <p id="popup-msg" style="margin:0; line-height:1.5;">설정을 변경하시겠습니까?</p>
+    <p id="popup-msg" style="margin:0; font-size:17px; line-height:1.6;">설정을 변경하시겠습니까?</p>
     <div class="popup-btns">
-        <button style="background:#28a745; color:white;" onclick="confirmAction()">예</button>
-        <button style="background:#666; color:white;" onclick="closePopup()">아니오</button>
+        <button style="background:#28a745; color:white;" onclick="doConfig()">예</button>
+        <button style="background:#555; color:white;" onclick="hidePopup()">아니오</button>
     </div>
 </div>
 
 <div class="card">
-    <h3>J1939 RPM CONTROL</h3>
+    <h3 style="margin-top:0;">J1939 TRUCK CONTROL</h3>
     <div id="status" class="status-bar">Bluetooth Disconnected</div>
     <div class="settings-grid">
-        <div><label style="font-size:11px; color:#aaa; display:block; margin-bottom:5px;">SA</label>
-            <select id="sa" onchange="askConfig('Source Address', 0xA2, this.value)"><option value="11">0x0B</option><option value="0">0x00</option><option value="33">0x21</option></select>
+        <div><label style="font-size:11px; color:#aaa;">SOURCE ADDRESS</label>
+            <select id="sa" onchange="ask('SA', 0xA2, this.value)"><option value="11">0x0B</option><option value="0">0x00</option></select>
         </div>
-        <div><label style="font-size:11px; color:#aaa; display:block; margin-bottom:5px;">BAUD</label>
-            <select id="baud" onchange="askConfig('Baudrate', 0xA1, this.value)"><option value="500">500k</option><option value="250">250k</option></select>
+        <div><label style="font-size:11px; color:#aaa;">BAUDRATE</label>
+            <select id="bd" onchange="ask('Baudrate', 0xA1, this.value)"><option value="500">500k</option><option value="250">250k</option></select>
         </div>
     </div>
     <canvas id="gauge"></canvas>
-    <div class="rpm-display">
-        <div class="rpm-box"><div id="cur-val" class="rpm-val">0000</div><div style="font-size:10px;">CURRENT</div></div>
-        <div class="rpm-box"><div id="tar-val" class="rpm-val">0000</div><div style="font-size:10px;">TARGET</div></div>
-    </div>
     <div class="controls">
         <button id="connBtn" class="btn-conn" onclick="initBLE()">CONNECT SYSTEM</button>
-        <button class="btn-start" onclick="sendCmd(0xA3, 1)">START</button>
-        <button class="btn-stop" onclick="sendCmd(0xA3, 0)">STOP</button>
-        <button class="btn-up" onclick="sendCmd(0xA4, 1)">RPM UP</button>
-        <button class="btn-down" onclick="sendCmd(0xA4, 0)">RPM DOWN</button>
+        <button style="background:#28a745; color:white;" onclick="send(0xA3, 1)">START</button>
+        <button style="background:#dc3545; color:white;" onclick="send(0xA3, 0)">STOP</button>
     </div>
 </div>
 
 <script>
-    const UUID_S = "6e400001-b5a3-f393-e0a9-e50e24dcca9e", UUID_C = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-    let device, char, pending = null;
+    const S_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+    const C_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+    let dev, char, pnd = null;
 
     const gauge = new RadialGauge({
         renderTo: 'gauge', width: 280, height: 280, units: "RPM", minValue: 0, maxValue: 3000,
-        majorTicks: ["0","500","1000","1500","2000","2500","3000"], colorPlate: "#2d2d2d", colorMajorTicks: "#eee", colorNumbers: "#eee",
-        needleType: "arrow", needleWidth: 3, animationDuration: 150, highlights: []
+        colorPlate: "#2d2d2d", colorMajorTicks: "#eee", colorNumbers: "#eee", animationDuration: 150
     }).draw();
 
     async function initBLE() {
         try {
             document.getElementById('status').innerText = "Scanning...";
-            device = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID_S] }] });
-            device.addEventListener('gattserverdisconnected', onDisconnected);
-            const server = await device.gatt.connect();
-            const service = await server.getPrimaryService(UUID_S);
-            char = await service.getCharacteristic(UUID_C);
+            // Bluefy 등에서 이전 장치를 무시하고 새로 검색하도록 장치 선택창 호출
+            dev = await navigator.bluetooth.requestDevice({ 
+                filters: [{ services: [S_UUID] }],
+                optionalServices: [S_UUID]
+            });
+            
+            dev.addEventListener('gattserverdisconnected', () => {
+                document.getElementById('status').innerText = "Disconnected";
+                document.getElementById('status').classList.remove('connected');
+                document.getElementById('connBtn').style.display = 'block';
+            });
+
+            const server = await dev.gatt.connect();
+            const service = await server.getPrimaryService(S_UUID);
+            char = await service.getCharacteristic(C_UUID);
+            
             await char.startNotifications();
             char.addEventListener('characteristicvaluechanged', (e) => {
                 const v = e.target.value;
-                const cur = v.getUint8(0) | (v.getUint8(1) << 8);
-                const tar = v.getUint8(2) | (v.getUint8(3) << 8);
-                document.getElementById('cur-val').innerText = cur.toString().padStart(4,'0');
-                document.getElementById('tar-val').innerText = tar.toString().padStart(4,'0');
-                gauge.value = cur;
-                gauge.update({ highlights: [{ from: 0, to: tar, color: 'rgba(0,255,136,0.3)' }, { from: 2500, to: 3000, color: 'red' }] });
+                gauge.value = v.getUint8(0) | (v.getUint8(1) << 8);
             });
-            document.getElementById('status').innerText = "Connected";
+
+            document.getElementById('status').innerText = "System Connected";
             document.getElementById('status').classList.add('connected');
             document.getElementById('connBtn').style.display = 'none';
-        } catch (err) { document.getElementById('status').innerText = "Failed"; }
-    }
-
-    function onDisconnected() {
-        document.getElementById('status').innerText = "Disconnected";
-        document.getElementById('status').classList.remove('connected');
-        document.getElementById('connBtn').style.display = 'block';
-        gauge.value = 0;
-    }
-
-    function askConfig(label, type, val) {
-        if (!char) return;
-        pending = { type, val };
-        document.getElementById('popup-msg').innerText = `${label}을 변경하시겠습니까?\n변경 시 연결이 끊어지고 기기가 리셋됩니다.`;
-        document.getElementById('popup').style.display = 'block';
-        document.getElementById('popup-overlay').style.display = 'block';
-    }
-
-    async function confirmAction() {
-        if (pending && char) {
-            await char.writeValue(new Uint8Array([pending.type, parseInt(pending.val)]));
-            if (device.gatt.connected) await device.gatt.disconnect();
-            closePopup();
+        } catch (err) { 
+            document.getElementById('status').innerText = "Connection Failed";
+            console.log(err);
         }
     }
 
-    function closePopup() { 
-        document.getElementById('popup').style.display = 'none';
-        document.getElementById('popup-overlay').style.display = 'none';
+    function ask(l, t, v) { if(!char) return; pnd = {t, v}; document.getElementById('popup').style.display='block'; document.getElementById('popup-overlay').style.display='block'; }
+    function hidePopup() { document.getElementById('popup').style.display='none'; document.getElementById('popup-overlay').style.display='none'; }
+    
+    async function doConfig() {
+        if(pnd && char) {
+            await char.writeValue(new Uint8Array([pnd.t, parseInt(pnd.val)]));
+            if(dev && dev.gatt.connected) await dev.gatt.disconnect(); // 즉시 해제하여 재검색 유도
+            hidePopup();
+        }
     }
-
-    async function sendCmd(t, v) { if(char) await char.writeValue(new Uint8Array([t, v])); }
+    async function send(t, v) { if(char) await char.writeValue(new Uint8Array([t, v])); }
 </script>
 </body>
 </html>
