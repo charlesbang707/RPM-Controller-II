@@ -2,11 +2,11 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Truck RPM Dashboard</title>
+    <title>Truck RPM Controller</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
         body { background: #1a1a1a; color: white; text-align: center; font-family: sans-serif; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; max-width: 380px; margin: auto; padding: 10px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; max-width: 380px; margin: auto; }
         .btn { padding: 20px; border-radius: 12px; font-weight: bold; font-size: 18px; border: none; cursor: pointer; color: white; box-shadow: 0 6px 0 rgba(0,0,0,0.5); }
         .resume { background: #2ecc71; } .up { background: #3498db; } .stop { background: #e74c3c; } .down { background: #f39c12; }
     </style>
@@ -53,14 +53,14 @@
                     gauge.value = cur;
                     document.getElementById('rpmVal').innerText = cur;
                     
-                    // [핵심] Target RPM을 테두리 아크로 표시
+                    // Target RPM을 테두리 아크로 실시간 표시
                     if (tar > 0) {
                         const col = tar > 1800 ? "rgba(231,76,60,0.8)" : "rgba(255,204,0,0.6)";
                         gauge.update({ highlights: [{ from: 0, to: tar, color: col }] });
                     } else { gauge.update({ highlights: [] }); }
                 });
                 document.getElementById('status').innerText = "Connected";
-            } catch (err) { console.log(err); }
+            } catch (err) { alert("연결 실패: " + err); }
         }
 
         async function send(val) {
