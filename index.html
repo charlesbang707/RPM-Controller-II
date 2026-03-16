@@ -3,61 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>J1939 RPM Control</title>
+    <title>J1939 Controller</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 15px; touch-action: manipulation; }
-        .card { max-width: 400px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .status-bar { font-size: 14px; padding: 10px; border-radius: 10px; margin-bottom: 15px; background: #3d3d3d; color: #ffbc00; border: 1px solid transparent; }
-        .connected { color: #00ff88 !important; border-color: #00ff88; }
-        .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-        select { width: 100%; padding: 12px; border-radius: 8px; background: #444; color: white; border: none; font-size: 15px; }
+        .card { max-width: 400px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 20px; }
+        .status-bar { font-size: 14px; padding: 10px; border-radius: 10px; margin-bottom: 15px; background: #3d3d3d; color: #ffbc00; }
+        .connected { color: #00ff88 !important; border: 1px solid #00ff88; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         button { padding: 18px; font-size: 16px; font-weight: bold; border: none; border-radius: 12px; cursor: pointer; }
         .btn-conn { grid-column: span 2; background: #007bff; color: white; margin-bottom: 10px; }
-        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; }
-        #popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; background: #333; padding: 25px; border-radius: 20px; z-index: 101; border: 1px solid #555; }
     </style>
 </head>
 <body>
-<div id="overlay"></div>
-<div id="popup">
-    <p style="margin:0; font-size:18px;">설정을 변경하시겠습니까?</p>
-    <p style="color:#aaa; font-size:14px;">기기가 리셋되어 다시 연결해야 합니다.</p>
-    <div style="display:flex; gap:10px; margin-top:20px;">
-        <button style="flex:1; background:#28a745; color:white;" onclick="confirmCfg()">확인</button>
-        <button style="flex:1; background:#555; color:white;" onclick="hidePop()">취소</button>
-    </div>
-</div>
 <div class="card">
-    <h3>J1939 CONTROLLER</h3>
-    <div id="status" class="status-bar">Bluetooth Disconnected</div>
-    <div class="settings">
-        <select id="sa" onchange="ask('SA', 0xA2, this.value)"><option value="11">SA: 0x0B</option><option value="0">SA: 0x00</option></select>
-        <select id="bd" onchange="ask('Baud', 0xA1, this.value)"><option value="500">500k</option><option value="250">250k</option></select>
-    </div>
+    <h3>J1939 RPM CONTROL</h3>
+    <div id="status" class="status-bar">Disconnected</div>
     <canvas id="gauge"></canvas>
     <div class="controls">
         <button id="connBtn" class="btn-conn" onclick="initBLE()">CONNECT SYSTEM</button>
         <button style="background:#28a745; color:white;" onclick="send(0xA3, 1)">START</button>
         <button style="background:#dc3545; color:white;" onclick="send(0xA3, 0)">STOP</button>
-        <button style="background:#007bff; color:white;" onclick="send(0xA4, 1)">RPM UP</button>
-        <button style="background:#6c757d; color:white;" onclick="send(0xA4, 0)">RPM DOWN</button>
+        <button style="background:#007bff; color:white;" onclick="send(0xA4, 1)">UP</button>
+        <button style="background:#6c757d; color:white;" onclick="send(0xA4, 0)">DOWN</button>
     </div>
 </div>
 <script>
     const S_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e", C_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-    let dev, char, pnd = null;
+    let device, char;
     const gauge = new RadialGauge({
         renderTo: 'gauge', width: 300, height: 300, units: "RPM", minValue: 0, maxValue: 3000,
         colorPlate: "#2d2d2d", colorMajorTicks: "#eee", colorNumbers: "#eee", animationDuration: 150
     }).draw();
     async function initBLE() {
         try {
-            document.getElementById('status').innerText = "Scanning...";
-            dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [S_UUID] }] });
-            dev.addEventListener('gattserverdisconnected', () => { location.reload(); });
-            const server = await dev.gatt.connect();
+            device = await navigator.bluetooth.requestDevice({ filters: [{ services: [S_UUID] }] });
+            const server = await device.gatt.connect();
             const service = await server.getPrimaryService(S_UUID);
             char = await service.getCharacteristic(C_UUID);
             await char.startNotifications();
@@ -68,15 +49,7 @@
             document.getElementById('status').innerText = "Connected";
             document.getElementById('status').classList.add('connected');
             document.getElementById('connBtn').style.display = 'none';
-        } catch (err) { document.getElementById('status').innerText = "Connection Failed"; }
-    }
-    function ask(l, t, v) { if(!char) return; pnd = {t, v}; document.getElementById('popup').style.display='block'; document.getElementById('overlay').style.display='block'; }
-    function hidePop() { document.getElementById('popup').style.display='none'; document.getElementById('overlay').style.display='none'; }
-    async function confirmCfg() {
-        if(pnd && char) {
-            await char.writeValue(new Uint8Array([pnd.t, parseInt(pnd.v)]));
-            setTimeout(() => { location.reload(); }, 1200);
-        }
+        } catch (err) { alert("연결 실패"); }
     }
     async function send(t, v) { if(char) await char.writeValue(new Uint8Array([t, v])); }
 </script>
