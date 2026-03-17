@@ -3,57 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>J1939 Controller</title>
+    <title>RPM Control Center</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { background: #0f0f0f; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; overflow: hidden; height: 100vh; display: flex; flex-direction: column; align-items: center; }
-        .container { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 8px; }
-        .header { display: flex; justify-content: space-between; align-items: center; }
-        #status { font-size: 14px; color: #ff3b3b; }
-        .connect-btn { background: #333; color: white; border: none; padding: 8px 15px; border-radius: 20px; font-weight: bold; }
-        .section { background: #1c1c1c; padding: 10px; border-radius: 15px; }
-        .label { font-size: 11px; color: #888; margin-bottom: 5px; text-transform: uppercase; }
-        .row { display: flex; gap: 8px; margin-bottom: 5px; }
-        .btn { flex: 1; padding: 15px; border-radius: 10px; border: none; font-weight: bold; color: white; font-size: 15px; cursor: pointer; }
-        .baud-btn { background: #2f2f2f; color: #aaa; } .baud-btn.active { background: #00aaff; color: white; }
-        .resume { background: #28a745; } .stop { background: #dc3545; } .up { background: #007bff; } .down { background: #555; }
-        select, input { background: #2f2f2f; color: white; border: none; padding: 8px; border-radius: 5px; flex: 1; }
-        .set-btn { background: #ffaa00; color: #111; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; }
+        body { background: #0a0a0a; color: white; font-family: sans-serif; margin: 0; padding: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .container { width: 100%; max-width: 400px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        
+        /* 게이지 중앙 정렬 및 크기 극대화 */
+        #gauge-container { position: relative; width: 380px; height: 380px; display: flex; justify-content: center; align-items: center; }
+        
+        .section { width: 90%; background: #1a1a1a; padding: 12px; border-radius: 15px; margin-top: 5px; }
+        .row { display: flex; gap: 10px; margin-bottom: 8px; }
+        .btn { flex: 1; padding: 18px; border-radius: 12px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; color: white; }
+        .resume { background: #2ecc71; } .stop { background: #e74c3c; } .up { background: #3498db; } .down { background: #7f8c8d; }
+        
+        /* Target RPM 숫자 박스 커스텀 (바늘 밑 숫자) */
+        #target-display { position: absolute; bottom: 85px; font-size: 45px; font-weight: bold; color: #00ff9d; text-shadow: 0 0 10px rgba(0,255,157,0.5); }
+        .label { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 5px; text-align: left; }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="header">
-        <div id="status">DISCONNECTED</div>
-        <button class="connect-btn" onclick="connect()">CONNECT</button>
-    </div>
+    <div id="status" style="font-size: 12px; color: #555;">DISCONNECTED</div>
+    <button onclick="connect()" style="background:#333; color:white; border:none; padding:8px 20px; border-radius:20px; margin-bottom:10px;">CONNECT</button>
 
-    <canvas id="gauge-rpm"></canvas>
-
-    <div class="section">
-        <div class="label">BAUD RATE</div>
-        <div class="row">
-            <button id="b250" class="btn baud-btn active" onclick="send(0x2500)">250K</button>
-            <button id="b500" class="btn baud-btn" onclick="send(0x5000)">500K</button>
-        </div>
+    <div id="gauge-container">
+        <canvas id="gauge-rpm"></canvas>
+        <div id="target-display">0</div>
     </div>
 
     <div class="section">
-        <div class="label">SOURCE ADDRESS</div>
-        <div class="row">
-            <select id="mfg-select" onchange="updateSA(this.value)">
-                <option value="229">Direct Input</option>
-                <option value="232">Caterpillar (0xE8)</option>
-                <option value="247">Cummins (0xF7)</option>
-                <option value="0">Engine #1 (0x00)</option>
-            </select>
-            <input id="sa-val" type="number" value="229">
-            <button class="set-btn" onclick="setSA()">SET</button>
-        </div>
-    </div>
-
-    <div class="section">
-        <div class="label">CONTROL</div>
+        <div class="label">ENGINE CONTROL</div>
         <div class="row">
             <button class="btn resume" onclick="send(1000)">RESUME</button>
             <button class="btn stop" onclick="send(600)">STOP</button>
@@ -66,16 +46,18 @@
 </div>
 
 <script>
-    // 게이지 설정: 바늘(Current) + 바깥 아크(Target)
     const gauge = new RadialGauge({
-        renderTo: 'gauge-rpm', width: 320, height: 320, minValue: 0, maxValue: 3000,
+        renderTo: 'gauge-rpm',
+        width: 380, height: 380, // 요청하신 대로 크기 확대
+        minValue: 0, maxValue: 3000,
         majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-        colorPlate: "#0f0f0f", colorNumbers: "#fff", needleType: "arrow",
-        needleWidth: 3, valueBox: true, valueDec: 0,
-        // 지시사항 반영: 테두리에 Target RPM을 표시하는 녹색 아크
-        barWidth: 10, colorBar: "#222", colorBarProgress: "#00ff9d",
-        highlights: [{ from: 2500, to: 3000, color: "rgba(255,0,0,0.5)" }],
-        animationDuration: 150
+        colorPlate: "#0a0a0a", colorNumbers: "#fff",
+        needleType: "arrow", needleWidth: 4, needleColor: "#fff",
+        // 테두리 아크 설정 (Target RPM 표시용)
+        barWidth: 12, colorBar: "#1a1a1a", colorBarProgress: "#00ff9d",
+        valueBox: false, // 기본 숫자 박스는 숨기고 커스텀 div 사용
+        highlights: [{ from: 2500, to: 3000, color: "rgba(255,0,0,0.3)" }],
+        animationDuration: 100, animationRule: "linear"
     }).draw();
 
     let char;
@@ -89,21 +71,19 @@
             const v = e.target.value;
             const cur = v.getUint16(0, true);
             const tar = v.getUint16(2, true);
-            const is500 = v.getUint8(4) === 1;
-            // 지시사항 반영: 바늘과 숫자는 Current
+            
+            // 1. 아날로그 바늘 -> Current RPM
             gauge.value = cur;
-            // 지시사항 반영: 녹색 아크는 Target
+            // 2. 테두리 아크 -> Target RPM
             gauge.update({ barProgress: tar });
-            document.getElementById('b500').className = is500 ? "btn baud-btn active" : "btn baud-btn";
-            document.getElementById('b250').className = is500 ? "btn baud-btn" : "btn baud-btn active";
+            // 3. 바늘 밑 숫자 -> Target RPM
+            document.getElementById('target-display').innerText = tar;
+            
             document.getElementById('status').innerText = "CONNECTED";
-            document.getElementById('status').style.color = "#00ff9d";
         });
     }
 
     async function send(v) { if(char) await char.writeValue(new Uint16Array([v])); }
-    function updateSA(v) { document.getElementById('sa-val').value = v; }
-    function setSA() { const sa = parseInt(document.getElementById('sa-val').value); send(0xA500 | sa); }
 </script>
 </body>
 </html>
