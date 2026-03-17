@@ -3,305 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>J1939 RPM Controller</title>
+    <title>J1939 Controller</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            text-align: center;
-            background: #000;
-            color: #fff;
-            margin: 0;
-            padding: 8px;
-            height: 100vh;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-        .container {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            max-width: 420px;
-            margin: 0 auto;
-            background: #111;
-            border-radius: 16px;
-            padding: 12px;
-            box-shadow: 0 0 30px rgba(0,0,0,0.7);
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        #status {
-            font-size: 15px;
-            font-weight: 600;
-            color: #ff3b30;
-            letter-spacing: 0.5px;
-        }
-        .connect-btn {
-            background: #333;
-            color: white;
-            padding: 8px 24px;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-        }
-        #gauge-rpm {
-            margin: 0 auto 12px;
-        }
-        .section {
-            margin: 10px 0;
-        }
-        .label {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 6px;
-            letter-spacing: 0.8px;
-        }
-        .baud-row {
-            display: flex;
-            gap: 8px;
-        }
-        .baud-btn {
-            flex: 1;
-            padding: 12px;
-            font-size: 15px;
-            font-weight: 600;
-            border: none;
-            border-radius: 999px;
-            background: #222;
-            color: #aaa;
-            cursor: pointer;
-        }
-        .baud-btn.active {
-            background: #007aff;
-            color: white;
-            box-shadow: 0 0 12px rgba(0,122,255,0.5);
-        }
-        .addr-row {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-            justify-content: center;
-        }
-        select, input[type="number"] {
-            background: #222;
-            color: white;
-            border: none;
-            padding: 10px 14px;
-            font-size: 15px;
-            border-radius: 999px;
-            width: 110px;
-            text-align: center;
-        }
-        .set-btn {
-            background: #ff9500;
-            color: #000;
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-        }
-        .control-row {
-            display: flex;
-            gap: 10px;
-            margin: 8px 0;
-        }
-        .control-btn {
-            flex: 1;
-            padding: 14px;
-            font-size: 16px;
-            font-weight: 700;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-        }
-        .start-btn { background: #34c759; color: white; }
-        .stop-btn  { background: #ff3b30; color: white; }
-        .adjust-row {
-            display: flex;
-            gap: 10px;
-        }
-        .adjust-btn {
-            flex: 1;
-            padding: 14px;
-            font-size: 16px;
-            font-weight: 700;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-        }
-        .up-btn   { background: #007aff; color: white; }
-        .down-btn { background: #8e8e93; color: white; }
-        button:active { opacity: 0.8; transform: scale(0.97); }
+        body { background: #000; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: sans-serif; }
+        .main-container { position: relative; width: 100%; max-width: 400px; text-align: center; }
+        
+        /* 상단 최소 상태바 */
+        .top-bar { position: absolute; top: 20px; width: 100%; display: flex; justify-content: space-around; z-index: 10; }
+        .info-text { color: #555; font-size: 12px; }
+
+        /* 게이지 스타일 */
+        #gauge-container { margin-top: 20px; }
+
+        /* 하단 숨겨진 메뉴 (필요할 때만 터치) */
+        .bottom-controls { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+        .btn { background: #1a1a1a; color: #444; border: 1px solid #333; padding: 10px 15px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+        .btn.active { color: #00ff9d; border-color: #00ff9d; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <div id="status">DISCONNECTED</div>
-        <button class="connect-btn" onclick="connectBLE()">CONNECT</button>
+<div class="main-container">
+    <div class="top-bar">
+        <span id="status" style="color: #444;">● OFFLINE</span>
+        <button class="btn" onclick="connectBLE()">CONNECT</button>
     </div>
 
-    <canvas id="gauge-rpm"></canvas>
-
-    <div class="section">
-        <div class="label">BAUD RATE</div>
-        <div class="baud-row">
-            <button id="baud250" class="baud-btn active" onclick="sendBaud(250)">250K</button>
-            <button id="baud500" class="baud-btn" onclick="sendBaud(500)">500K</button>
-        </div>
+    <div id="gauge-container">
+        <canvas id="gauge-rpm"></canvas>
     </div>
 
-    <div class="section">
-        <div class="label">ENGINE / SOURCE ADDRESS</div>
-        <div class="addr-row">
-            <select id="addr-mode">
-                <option>Direct Input</option>
-            </select>
-            <input id="source-addr" type="number" value="229" min="0" max="255">
-            <button class="set-btn" onclick="setAddress()">SET</button>
-        </div>
-    </div>
-
-    <div class="section">
-        <div class="label">CONTROL</div>
-        <div class="control-row">
-            <button class="control-btn start-btn" onclick="sendStart()">START</button>
-            <button class="control-btn stop-btn" onclick="sendStop()">STOP</button>
-        </div>
-    </div>
-
-    <div class="section">
-        <div class="label">RPM ADJUST (±25)</div>
-        <div class="adjust-row">
-            <button class="adjust-btn up-btn" onclick="sendUp()">UP</button>
-            <button class="adjust-btn down-btn" onclick="sendDown()">DOWN</button>
-        </div>
+    <div class="bottom-controls">
+        <button id="b250" class="btn active" onclick="sendBaud(250)">250K</button>
+        <button id="b500" class="btn" onclick="sendBaud(500)">500K</button>
+        <select id="sa-select" class="btn" onchange="sendSA(this.value)">
+            <option value="229">E5 (Def)</option>
+            <option value="232">E8 (Cat)</option>
+            <option value="247">F7 (Cum)</option>
+        </select>
     </div>
 </div>
 
 <script>
-// 게이지 설정 - 중앙 숫자는 Target RPM (정수), 바늘은 Current RPM
-var gauge = new RadialGauge({
-    renderTo: 'gauge-rpm',
-    width: 320,
-    height: 320,
-    units: "RPM",
-    minValue: 0,
-    maxValue: 3000,
-    majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-    minorTicks: 5,
-    strokeTicks: true,
-    highlights: [{ from: 2500, to: 3000, color: "rgba(255,59,48,0.75)" }],
-    colorPlate: "#000",
-    colorMajorTicks: "#eee",
-    colorMinorTicks: "#ccc",
-    colorTitle: "#aaa",
-    colorUnits: "#aaa",
-    colorNumbers: "#ddd",
-    needleType: "arrow",
-    needleWidth: 3,
-    needleColor: "#fff",
-    valueBox: true,
-    valueInt: 0,           // 소수점 제거
-    valueDec: 0,
-    animationDuration: 300,
-    animationRule: "linear"
-}).draw();
+    // 사용자님이 주신 "두 번째 이미지"의 게이지 및 디지털 숫자 구현
+    var gauge = new RadialGauge({
+        renderTo: 'gauge-rpm',
+        width: 380, height: 380,
+        minValue: 0, maxValue: 3000,
+        majorTicks: ["0","5","10","15","20","25","30"], // x100 형태
+        minorTicks: 2,
+        strokeTicks: true,
+        highlights: [{ from: 2500, to: 3000, color: "rgba(200, 50, 50, .75)" }],
+        colorPlate: "#000",
+        colorMajorTicks: "#ddd",
+        colorMinorTicks: "#666",
+        colorNumbers: "#eee",
+        colorUnits: "#ccc",
+        colorNumbers: "#fff",
+        // 바늘 설정
+        needleType: "arrow",
+        needleWidth: 2,
+        needleColor: "#fff",
+        needleCircleSize: 7,
+        needleCircleOuter: true,
+        needleCircleInner: false,
+        // 중앙 디지털 숫자 (Target RPM 표시)
+        valueBox: true,
+        valueInt: 0,
+        valueDec: 0,
+        colorValueBoxRect: "rgba(0,0,0,0)",
+        colorValueBoxRectEnd: "rgba(0,0,0,0)",
+        colorValueBoxBackground: "rgba(0,0,0,0)",
+        colorValueText: "#00ff9d", // 디지털 숫자 색상
+        fontValue: "monospace",
+        // 아크 설정
+        barWidth: 8,
+        colorBarProgress: "rgba(0, 255, 157, .5)",
+        colorBar: "rgba(50, 50, 50, .2)",
+        animationDuration: 150,
+        animationRule: "linear"
+    }).draw();
 
-let bleDevice = null;
-let bleCharacteristic = null;
-const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    let bleChar;
+    async function connectBLE() {
+        const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: ["4fafc201-1fb5-459e-8fcc-c5c9c331914b"] }] });
+        const server = await dev.gatt.connect();
+        const service = await server.getPrimaryService("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+        bleChar = await service.getCharacteristic("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+        
+        document.getElementById('status').innerText = "● ONLINE";
+        document.getElementById('status').style.color = "#00ff9d";
 
-async function connectBLE() {
-    try {
-        document.getElementById('status').innerText = "Searching...";
-        document.getElementById('status').style.color = "#ffcc00";
+        await bleChar.startNotifications();
+        bleChar.addEventListener('characteristicvaluechanged', (e) => {
+            const v = e.target.value;
+            const cur = v.getUint16(0, true);
+            const tar = v.getUint16(2, true);
+            const is500 = v.getUint8(4) === 1;
 
-        bleDevice = await navigator.bluetooth.requestDevice({
-            filters: [{ services: [SERVICE_UUID] }]
+            gauge.value = tar; // 중앙 디지털 숫자 -> Target
+            gauge.update({ needleValue: cur, barProgress: tar }); // 바늘 -> Current
+            
+            document.getElementById('b500').className = is500 ? "btn active" : "btn";
+            document.getElementById('b250').className = is500 ? "btn" : "btn active";
         });
-
-        const server = await bleDevice.gatt.connect();
-        const service = await server.getPrimaryService(SERVICE_UUID);
-        bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
-
-        await bleCharacteristic.startNotifications();
-        bleCharacteristic.addEventListener('characteristicvaluechanged', handleDataChanged);
-
-        document.getElementById('status').innerText = "CONNECTED";
-        document.getElementById('status').style.color = "#34c759";
-
-        bleDevice.addEventListener('gattserverdisconnected', () => {
-            document.getElementById('status').innerText = "DISCONNECTED";
-            document.getElementById('status').style.color = "#ff3b30";
-            bleCharacteristic = null;
-        });
-
-    } catch (error) {
-        console.error(error);
-        document.getElementById('status').innerText = "ERROR";
-        document.getElementById('status').style.color = "#ff3b30";
     }
-}
 
-function handleDataChanged(event) {
-    const value = event.target.value;
-    if (value.byteLength < 5) return;
-
-    const currentRPM = value.getUint8(0) | (value.getUint8(1) << 8);
-    const targetRPM  = value.getUint8(2) | (value.getUint8(3) << 8);
-    const is500k     = value.getUint8(4) === 1;
-
-    // 바늘 = Current RPM
-    gauge.value = currentRPM;
-
-    // 중앙 숫자 = Target RPM (정수)
-    gauge.valueBox = true;
-    gauge.options.value = targetRPM;  // canvas-gauges에서 value로 중앙 표시 제어
-    gauge.draw();  // 즉시 갱신
-
-    updateBaudUI(is500k);
-}
-
-function updateBaudUI(is500) {
-    document.getElementById('baud250').classList.toggle('active', !is500);
-    document.getElementById('baud500').classList.toggle('active', is500);
-}
-
-function sendValue(val) {
-    if (!bleCharacteristic) {
-        alert("먼저 CONNECT 해주세요.");
-        return;
-    }
-    const data = new Uint8Array([val & 0xFF, (val >> 8) & 0xFF]);
-    bleCharacteristic.writeValue(data).catch(console.error);
-}
-
-function sendBaud(k)      { sendValue(k === 500 ? 0x5000 : 0x2500); }
-function sendStart()      { sendValue(1000); }
-function sendStop()       { sendValue(600); }
-function sendUp()         { sendValue(1); }
-function sendDown()       { sendValue(2); }
-
-function setAddress() {
-    const addr = parseInt(document.getElementById('source-addr').value);
-    if (isNaN(addr) || addr < 0 || addr > 255) {
-        alert("0~255 사이로 입력해주세요.");
-        return;
-    }
-    sendValue(0xA500 | addr);
-}
+    function send(v) { if(bleChar) bleChar.writeValue(new Uint16Array([v])); }
+    function sendBaud(k) { send(k === 500 ? 0x5000 : 0x2500); }
+    function sendSA(sa) { send(0xA500 | parseInt(sa)); }
+    
+    // 버튼 기능 (화면엔 안 보이지만 작동)
+    window.addEventListener('keydown', (e) => {
+        if(e.key === 'ArrowUp') send(1);
+        if(e.key === 'ArrowDown') send(2);
+    });
 </script>
 </body>
 </html>
