@@ -6,27 +6,34 @@
     <title>J1939 Master Control</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { background: #0a0a0a; color: white; font-family: sans-serif; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        .container { width: 100%; max-width: 390px; display: flex; flex-direction: column; gap: 8px; }
-        .header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-        #status { font-size: 13px; font-weight: bold; color: #ff4757; }
-        .conn-btn { background: #333; color: white; border: none; padding: 8px 15px; border-radius: 20px; font-size: 12px; cursor: pointer; }
-
-        /* 게이지 확대 및 중앙 정렬 */
-        #gauge-box { position: relative; width: 370px; height: 370px; display: flex; justify-content: center; align-items: center; }
-        #target-num { position: absolute; bottom: 80px; font-size: 55px; font-weight: 800; color: #00ff9d; font-family: monospace; text-shadow: 0 0 15px rgba(0,255,157,0.4); }
-
-        .section { background: #1a1a1a; padding: 12px; border-radius: 18px; width: 100%; box-sizing: border-box; }
-        .label { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 8px; font-weight: bold; }
-        .row { display: flex; gap: 8px; margin-bottom: 8px; }
+        body { background: #0f0f0f; color: white; font-family: 'Roboto', sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+        .container { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; }
         
-        .btn { flex: 1; padding: 16px; border-radius: 12px; border: none; font-weight: bold; font-size: 15px; cursor: pointer; color: white; }
+        /* 상단 상태바 */
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 0 10px; }
+        #status { font-size: 14px; font-weight: bold; color: #ff4757; }
+        .conn-btn { background: #333; color: #fff; border: none; padding: 6px 12px; border-radius: 15px; font-size: 11px; cursor: pointer; }
+
+        /* 2, 3. 게이지 및 디지털 숫자 (사용자 디자인 유지) */
+        #gauge-area { position: relative; width: 340px; height: 340px; margin: 0 auto; }
+        #target-num { position: absolute; bottom: 75px; left: 50%; transform: translateX(-50%); font-size: 52px; font-weight: 800; color: #00ff9d; font-family: monospace; text-shadow: 0 0 10px rgba(0,255,157,0.3); }
+
+        .section { background: #1c1c1c; padding: 10px; border-radius: 15px; width: 100%; box-sizing: border-box; }
+        .label { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 5px; font-weight: bold; }
+        .row { display: flex; gap: 6px; margin-bottom: 5px; }
+        
+        /* 6, 7. 제어 버튼 */
+        .btn { flex: 1; padding: 14px; border-radius: 10px; border: none; font-weight: bold; font-size: 15px; cursor: pointer; color: white; }
         .resume { background: #27ae60; } .stop { background: #c0392b; }
         .up { background: #2980b9; } .down { background: #7f8c8d; }
-        .baud { background: #333; color: #666; } .baud.active { background: #0984e3; color: white; }
+        
+        /* 4. Baud Rate */
+        .baud { background: #333; color: #666; font-size: 13px; padding: 10px; } 
+        .baud.active { background: #0984e3; color: white; }
 
-        select, input { background: #2a2a2a; color: white; border: none; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; }
-        .set-btn { background: #f39c12; color: black; font-weight: bold; padding: 0 15px; border-radius: 8px; border: none; }
+        /* 5. Source Address */
+        select, input { background: #2a2a2a; color: white; border: none; padding: 8px; border-radius: 6px; flex: 1; font-size: 13px; }
+        .set-btn { background: #f39c12; color: black; font-weight: bold; padding: 0 12px; border-radius: 6px; border: none; }
     </style>
 </head>
 <body>
@@ -36,7 +43,7 @@
         <button class="conn-btn" onclick="connect()">CONNECT BLE</button>
     </div>
 
-    <div id="gauge-box">
+    <div id="gauge-area">
         <canvas id="gauge-rpm"></canvas>
         <div id="target-num">0000</div>
     </div>
@@ -44,48 +51,41 @@
     <div class="section">
         <div class="label">Source Address</div>
         <div class="row">
-            <select id="sa-list" onchange="document.getElementById('sa-val').value = this.value">
+            <select id="sa-preset" onchange="document.getElementById('sa-input').value = this.value">
                 <option value="229">Default (0xE5)</option>
                 <option value="232">Caterpillar (0xE8)</option>
                 <option value="247">Cummins (0xF7)</option>
                 <option value="0">Engine #1 (0x00)</option>
                 <option value="33">Body Control (0x21)</option>
             </select>
-            <input id="sa-val" type="number" value="229">
+            <input id="sa-input" type="number" value="229">
             <button class="set-btn" onclick="setSA()">SET</button>
         </div>
     </div>
 
     <div class="section">
-        <div class="label">CAN Baud Rate</div>
         <div class="row">
             <button id="b250" class="btn baud active" onclick="sendBaud(250)">250K</button>
             <button id="b500" class="btn baud" onclick="sendBaud(500)">500K</button>
-        </div>
-    </div>
-
-    <div class="section">
-        <div class="label">Control</div>
-        <div class="row">
-            <button class="btn resume" onclick="send(1000)">RESUME</button>
-            <button class="btn stop" onclick="send(600)">STOP</button>
+            <button class="btn resume" style="flex:2" onclick="send(1000)">RESUME</button>
+            <button class="btn stop" style="flex:2" onclick="send(600)">STOP</button>
         </div>
         <div class="row">
-            <button class="btn up" onclick="send(1)">UP</button>
-            <button class="btn down" onclick="send(2)">DOWN</button>
+            <button class="btn up" onclick="send(1)">RPM UP ▲</button>
+            <button class="btn down" onclick="send(2)">RPM DOWN ▼</button>
         </div>
     </div>
 </div>
 
 <script>
+    // 사용자님이 준 이미지의 게이지 모양 그대로 설정
     const gauge = new RadialGauge({
-        renderTo: 'gauge-rpm', width: 370, height: 370, minValue: 0, maxValue: 3000,
+        renderTo: 'gauge-rpm', width: 340, height: 340, minValue: 0, maxValue: 3000,
         majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-        colorPlate: "#0a0a0a", colorNumbers: "#fff", needleType: "arrow",
+        colorPlate: "#0f0f0f", colorNumbers: "#fff", needleType: "arrow",
         needleWidth: 3, needleColor: "#fff",
-        // 반투명 아크 효과 적용
-        barWidth: 12, colorBar: "rgba(255,255,255,0.05)", colorBarProgress: "rgba(0, 255, 157, 0.4)",
-        valueBox: false, animationDuration: 150, animationRule: "linear"
+        barWidth: 15, colorBar: "rgba(255,255,255,0.05)", colorBarProgress: "#00ff9d",
+        valueBox: false, borders: false, animationDuration: 150, animationRule: "linear"
     }).draw();
 
     let bleChar;
@@ -103,7 +103,7 @@
             
             gauge.value = cur; // 바늘 -> Current
             gauge.update({ barProgress: tar }); // 아크 -> Target
-            document.getElementById('target-num').innerText = tar; // 숫자 -> Target
+            document.getElementById('target-num').innerText = tar;
             
             document.getElementById('status').innerText = "● CONNECTED";
             document.getElementById('status').style.color = "#00ff9d";
@@ -114,7 +114,7 @@
 
     async function send(v) { if(bleChar) await bleChar.writeValue(new Uint16Array([v])); }
     function sendBaud(k) { send(k === 500 ? 0x5000 : 0x2500); }
-    function setSA() { const sa = parseInt(document.getElementById('sa-val').value); send(0xA500 | sa); }
+    function setSA() { const sa = parseInt(document.getElementById('sa-input').value); send(0xA500 | sa); }
 </script>
 </body>
 </html>
