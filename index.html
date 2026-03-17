@@ -8,12 +8,12 @@
     <style>
         body { background-color: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 15px; }
         .top-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .btn-connect { background: #333; color: white; border: 1px solid #444; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-connect { background: #333; color: white; border: 1px solid #444; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; }
         .btn-connect.connected { background: #e74c3c; }
 
         .sa-container { width: 100%; max-width: 380px; display: flex; gap: 8px; margin-bottom: 15px; background: #222; padding: 10px; border-radius: 10px; border: 1px solid #333; }
         .sa-select { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 5px; }
-        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; }
+        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; }
 
         .gauge-wrapper { position: relative; width: 320px; height: 320px; }
         #targetDisplay {
@@ -84,11 +84,16 @@
         async function toggleConnection() {
             if (device && device.gatt.connected) { 
                 await device.gatt.disconnect(); 
-                updateUI(false);
                 return; 
             }
             try {
-                device = await navigator.bluetooth.requestDevice({ filters: [{ name: "Truck_RPM_Control" }], optionalServices: [SERVICE_UUID] });
+                device = await navigator.bluetooth.requestDevice({ 
+                    filters: [{ name: "Truck_RPM_Control" }], 
+                    optionalServices: [SERVICE_UUID] 
+                });
+                
+                device.addEventListener('gattserverdisconnected', onDisconnected);
+                
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 characteristic = await service.getCharacteristic(CHAR_UUID);
@@ -109,10 +114,12 @@
                     document.getElementById('btn250').classList.toggle('active', baud === 0);
                     document.getElementById('btn500').classList.toggle('active', baud === 1);
                 });
+            } catch (err) { console.log("Connection Error: ", err); }
+        }
 
-                device.addEventListener('gattserverdisconnected', () => updateUI(false));
-
-            } catch (err) { console.log(err); }
+        function onDisconnected() {
+            updateUI(false);
+            console.log("Bluetooth Disconnected");
         }
 
         function updateUI(connected) {
@@ -128,6 +135,8 @@
                 status.style.color = "#888";
                 btn.innerText = "CONNECT";
                 btn.classList.remove('connected');
+                document.getElementById('targetDisplay').innerText = "0";
+                gauge.value = 0;
             }
         }
 
