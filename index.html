@@ -11,15 +11,15 @@
         .btn-connect { background: #333; color: white; border: 1px solid #444; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-connect.connected { background: #e74c3c; }
 
-        /* SA 선택 복구 */
-        .sa-container { width: 100%; max-width: 380px; display: flex; gap: 8px; margin-bottom: 15px; background: #222; padding: 10px; border-radius: 10px; }
+        /* SA 선택 기능 복구 */
+        .sa-container { width: 100%; max-width: 380px; display: flex; gap: 8px; margin-bottom: 15px; background: #222; padding: 10px; border-radius: 10px; border: 1px solid #333; }
         .sa-select { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 5px; }
-        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; }
+        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; }
 
-        /* 3D 게이지 스타일 */
+        /* 3D 게이지 레이아웃 */
         .gauge-wrapper { position: relative; width: 320px; height: 320px; }
         #targetDisplay {
-            position: absolute; top: 75%; left: 50%; transform: translate(-50%, -50%);
+            position: absolute; top: 76%; left: 50%; transform: translate(-50%, -50%);
             font-size: 22px; font-weight: bold; color: #3498db; text-shadow: 0 0 10px rgba(52,152,219,0.5);
             pointer-events: none; z-index: 10;
         }
@@ -55,8 +55,8 @@
     </div>
     
     <div class="baud-container">
-        <button id="btn250" class="btn-baud active" onclick="changeBaud(250)">250K</button>
-        <button id="btn500" class="btn-baud" onclick="changeBaud(500)">500K</button>
+        <button id="btn250" class="btn-baud active" onclick="changeBaud(250)">250K bps</button>
+        <button id="btn500" class="btn-baud" onclick="changeBaud(500)">500K bps</button>
     </div>
 
     <div class="grid">
@@ -71,6 +71,7 @@
         const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
         const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
+        // 3D 게이지 및 타겟 아크 복구
         var gauge = new RadialGauge({
             renderTo: 'gauge-rpm', width: 320, height: 320,
             minValue: 0, maxValue: 3000,
@@ -98,12 +99,14 @@
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', (e) => {
                     let data = e.target.value;
-                    gauge.value = data.getUint16(0, true);
+                    let cur = data.getUint16(0, true);
                     let tar = data.getUint16(2, true);
+                    let baud = data.getUint8(4);
+                    
+                    gauge.value = cur;
                     document.getElementById('targetDisplay').innerText = tar;
                     gauge.update({ highlights: [{ from: 0, to: tar, color: "rgba(46, 204, 113, 0.4)" }] });
                     
-                    let baud = data.getUint8(4);
                     document.getElementById('btn250').classList.toggle('active', baud === 0);
                     document.getElementById('btn500').classList.toggle('active', baud === 1);
                 });
