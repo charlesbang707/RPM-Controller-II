@@ -6,63 +6,54 @@
     <title>J1939 Master Control</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { background: #0a0a0a; color: white; font-family: -apple-system, sans-serif; margin: 0; padding: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .container { width: 100%; max-width: 390px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        body { background: #0a0a0a; color: white; font-family: sans-serif; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .container { width: 100%; max-width: 400px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
         
-        #gauge-container { position: relative; width: 360px; height: 360px; display: flex; justify-content: center; align-items: center; margin-top: -20px; }
-        #target-val-box { position: absolute; bottom: 80px; font-size: 50px; font-weight: 800; color: #00ff9d; font-family: 'Courier New', monospace; text-shadow: 0 0 15px rgba(0,255,157,0.4); }
+        /* 게이지 확대 및 중앙 배치 */
+        #gauge-container { position: relative; width: 380px; height: 380px; display: flex; justify-content: center; align-items: center; }
+        #target-display { position: absolute; bottom: 85px; font-size: 50px; font-weight: 800; color: #00ff9d; text-shadow: 0 0 10px rgba(0,255,157,0.5); font-family: monospace; }
 
-        .section { width: 92%; background: #1a1a1a; padding: 12px; border-radius: 18px; box-sizing: border-box; }
-        .label { font-size: 11px; color: #777; text-transform: uppercase; margin-bottom: 8px; text-align: left; font-weight: bold; letter-spacing: 1px; }
-        .row { display: flex; gap: 8px; width: 100%; }
+        .section { width: 92%; background: #1a1a1a; padding: 15px; border-radius: 20px; box-sizing: border-box; }
+        .label { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 10px; font-weight: bold; letter-spacing: 1px; }
+        .row { display: flex; gap: 10px; width: 100%; }
         
-        /* 버튼 스타일 */
-        .btn { flex: 1; padding: 16px; border-radius: 12px; border: none; font-weight: 800; font-size: 15px; cursor: pointer; color: white; transition: 0.1s; }
-        .btn:active { transform: scale(0.96); opacity: 0.8; }
+        .btn { flex: 1; padding: 18px; border-radius: 12px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; color: white; }
         .resume { background: #27ae60; } .stop { background: #c0392b; } .up { background: #2980b9; } .down { background: #7f8c8d; }
         
-        /* SA 선택 스타일 */
         select, input { background: #2a2a2a; color: white; border: none; padding: 10px; border-radius: 8px; font-size: 14px; }
         select { flex: 2; } input { flex: 1; text-align: center; }
         .set-btn { background: #f39c12; color: #000; font-weight: bold; padding: 0 15px; border-radius: 8px; border: none; }
         
-        .header { width: 92%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-        #status { font-size: 13px; color: #666; font-weight: bold; }
-        .conn-btn { background: #333; border: none; color: #fff; padding: 6px 15px; border-radius: 20px; font-size: 12px; }
+        #status { font-size: 12px; color: #444; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="header">
-        <div id="status">OFFLINE</div>
-        <button class="conn-btn" onclick="connect()">CONNECT BLE</button>
-    </div>
+    <div id="status" onclick="connect()" style="cursor:pointer">TAP TO CONNECT BLE</div>
 
     <div id="gauge-container">
         <canvas id="gauge-rpm"></canvas>
-        <div id="target-val-box">0000</div>
+        <div id="target-display">0000</div>
     </div>
 
     <div class="section">
         <div class="label">Source Address Selection</div>
         <div class="row">
-            <select id="sa-preset" onchange="document.getElementById('sa-manual').value = this.value">
-                <option value="229">Direct Input (Manual)</option>
-                <option value="0">Engine #1 (0x00)</option>
-                <option value="1">Engine #2 (0x01)</option>
-                <option value="3">Transmission (0x03)</option>
-                <option value="33">Body Controller (0x21)</option>
+            <select id="sa-select" onchange="document.getElementById('sa-input').value = this.value">
+                <option value="229">Direct Input</option>
                 <option value="232">Caterpillar (0xE8)</option>
                 <option value="247">Cummins (0xF7)</option>
+                <option value="0">Engine #1 (0x00)</option>
+                <option value="33">Body Controller (0x21)</option>
             </select>
-            <input id="sa-manual" type="number" value="229" min="0" max="255">
+            <input id="sa-input" type="number" value="229">
             <button class="set-btn" onclick="setSA()">SET</button>
         </div>
     </div>
 
     <div class="section">
         <div class="label">Speed Control</div>
-        <div class="row" style="margin-bottom:8px;">
+        <div class="row" style="margin-bottom:10px;">
             <button class="btn resume" onclick="send(1000)">RESUME</button>
             <button class="btn stop" onclick="send(600)">STOP</button>
         </div>
@@ -75,48 +66,39 @@
 
 <script>
     const gauge = new RadialGauge({
-        renderTo: 'gauge-rpm', width: 360, height: 360, minValue: 0, maxValue: 3000,
+        renderTo: 'gauge-rpm', width: 380, height: 380, minValue: 0, maxValue: 3000,
         majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-        colorPlate: "#0a0a0a", colorNumbers: "#eee", needleType: "arrow",
-        needleWidth: 3, needleColor: "#fff",
-        // 아크(Arc) 설정: Target RPM 표시용
+        colorPlate: "#0a0a0a", colorNumbers: "#fff", needleType: "arrow",
+        needleWidth: 4, needleColor: "#fff",
+        // 테두리 아크: Target RPM 표시
         barWidth: 12, colorBar: "#1a1a1a", colorBarProgress: "#00ff9d",
-        valueBox: false, // 커스텀 Div 사용을 위해 기본 박스 제거
-        highlights: [{ from: 2500, to: 3000, color: "rgba(255,0,0,0.4)" }],
-        animationDuration: 150, animationRule: "linear"
+        valueBox: false,
+        highlights: [{ from: 2500, to: 3000, color: "rgba(255,0,0,0.3)" }],
+        animationDuration: 100, animationRule: "linear"
     }).draw();
 
     let bleChar;
     async function connect() {
-        try {
-            const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: ["4fafc201-1fb5-459e-8fcc-c5c9c331914b"] }] });
-            const server = await dev.gatt.connect();
-            const service = await server.getPrimaryService("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
-            bleChar = await service.getCharacteristic("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+        const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: ["4fafc201-1fb5-459e-8fcc-c5c9c331914b"] }] });
+        const server = await dev.gatt.connect();
+        const service = await server.getPrimaryService("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+        bleChar = await service.getCharacteristic("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+        
+        await bleChar.startNotifications();
+        bleChar.addEventListener('characteristicvaluechanged', (e) => {
+            const data = e.target.value;
+            const current = data.getUint16(0, true);
+            const target = data.getUint16(2, true);
             
-            await bleChar.startNotifications();
-            bleChar.addEventListener('characteristicvaluechanged', (e) => {
-                const data = e.target.value;
-                const current = data.getUint16(0, true);
-                const target = data.getUint16(2, true);
-                
-                // 바늘은 Current RPM
-                gauge.value = current;
-                // 아크와 숫자는 Target RPM
-                gauge.update({ barProgress: target });
-                document.getElementById('target-val-box').innerText = String(target).padStart(4, '0');
-                
-                document.getElementById('status').innerText = "ONLINE";
-                document.getElementById('status').style.color = "#00ff9d";
-            });
-        } catch(err) { console.log(err); }
+            gauge.value = current; // 바늘 -> Current
+            gauge.update({ barProgress: target }); // 녹색 아크 -> Target
+            document.getElementById('target-display').innerText = target; // 숫자 -> Target
+            document.getElementById('status').innerText = "CONNECTED";
+        });
     }
 
     async function send(v) { if(bleChar) await bleChar.writeValue(new Uint16Array([v])); }
-    function setSA() { 
-        const val = parseInt(document.getElementById('sa-manual').value);
-        if(val >= 0 && val <= 255) send(0xA500 | val); 
-    }
+    function setSA() { const sa = parseInt(document.getElementById('sa-input').value); send(0xA500 | sa); }
 </script>
 </body>
 </html>
