@@ -12,27 +12,26 @@
             display: flex; flex-direction: column; align-items: center; justify-content: space-between;
             min-height: 95vh; padding-bottom: env(safe-area-inset-bottom, 20px);
         }
-        
         .top-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
         #status { font-size: 14px; color: #888; font-weight: bold; }
-        
-        /* 3D 상단 버튼 */
         .btn-connect { 
             background: linear-gradient(to bottom, #555 0%, #333 100%); border: 1px solid #222;
             color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 0 #111, 0 5px 5px rgba(0,0,0,0.5);
             transition: all 0.1s;
         }
-        .btn-connect:active { transform: translateY(3px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 0 #111, 0 2px 2px rgba(0,0,0,0.5); }
-        .btn-connect.connected { background: linear-gradient(to bottom, #e74c3c 0%, #c0392b 100%); border-color: #a93226; box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 0 #922b21, 0 5px 5px rgba(0,0,0,0.5); }
+        .btn-connect:active { transform: translateY(3px); }
+        .btn-connect.connected { background: linear-gradient(to bottom, #e74c3c 0%, #c0392b 100%); }
 
-        /* --- 신규 추가: SA 선택 섹션 (기존 디자인 스타일 유지) --- */
-        .sa-container { width: 100%; max-width: 380px; display: flex; gap: 8px; align-items: center; margin-bottom: 10px; background: #222; padding: 8px; border-radius: 10px; border: 1px solid #333; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); }
+        /* SA 설정 섹션 */
+        .sa-container { 
+            width: 100%; max-width: 380px; display: flex; gap: 8px; align-items: center; 
+            margin-bottom: 10px; background: #222; padding: 8px; border-radius: 10px; 
+            border: 1px solid #333; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); 
+        }
         .sa-label { font-size: 11px; color: #888; font-weight: bold; min-width: 60px; }
-        .sa-select { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 6px; font-weight: bold; outline: none; }
+        .sa-select { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 6px; font-weight: bold; }
         .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 0 #000; }
-        .btn-set:active { transform: translateY(1px); box-shadow: 0 1px 0 #000; }
-        /* --------------------------------------------------- */
 
         .gauge-wrapper { position: relative; margin: 5px 0; }
         #rpmVal { font-size: 50px; font-weight: 900; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top: -20px; }
@@ -44,7 +43,6 @@
             padding: 8px 15px; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 3px 0 #000; transition: all 0.1s;
         }
-        .btn-baud:active { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
         .btn-baud.active { color: #3498db; text-shadow: 0 0 5px rgba(52,152,219,0.5); }
 
         .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; max-width: 380px; }
@@ -53,7 +51,7 @@
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 6px 0 rgba(0,0,0,0.6), 0 8px 6px rgba(0,0,0,0.4);
             transition: all 0.1s; text-transform: uppercase;
         }
-        .btn:active { transform: translateY(4px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 0 rgba(0,0,0,0.6), 0 3px 3px rgba(0,0,0,0.4); }
+        .btn:active { transform: translateY(4px); }
         .resume { background: linear-gradient(to bottom, #2ecc71 0%, #27ae60 100%); }
         .up { background: linear-gradient(to bottom, #3498db 0%, #2980b9 100%); }
         .stop { background: linear-gradient(to bottom, #e74c3c 0%, #c0392b 100%); }
@@ -61,7 +59,6 @@
     </style>
 </head>
 <body>
-
     <div class="top-bar">
         <div id="status">Ready</div>
         <button id="connectBtn" class="btn-connect" onclick="toggleConnection()">CONNECT</button>
@@ -77,9 +74,7 @@
         <button class="btn-set" onclick="setSA()">SET</button>
     </div>
 
-    <div class="gauge-wrapper">
-        <canvas id="gauge-rpm"></canvas>
-    </div>
+    <div class="gauge-wrapper"><canvas id="gauge-rpm"></canvas></div>
     <div id="rpmVal">0</div>
     <div class="target-label">CURRENT RPM</div>
 
@@ -101,81 +96,41 @@
         const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
         var gauge = new RadialGauge({
-            renderTo: 'gauge-rpm', width: 280, height: 280, units: "",
+            renderTo: 'gauge-rpm', width: 300, height: 300,
             minValue: 0, maxValue: 3000,
             majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-            minorTicks: 5, strokeTicks: true,
-            colorPlate: "#1a1a1a", colorMajorTicks: "#ccc", colorMinorTicks: "#666",
-            colorNumbers: "#fff", needleType: "arrow", needleWidth: 4, needleCircleSize: 7,
-            needleCircleOuter: true, needleCircleInner: false,
-            borders: true, borderShadowWidth: 2,
-            colorBorderOuter: "#333", colorBorderOuterEnd: "#111",
-            colorBorderMiddle: "#222", colorBorderMiddleEnd: "#111",
-            colorBorderInner: "#111", colorBorderInnerEnd: "#333",
-            valueBox: false, animationDuration: 150, animationRule: "linear",
-            highlights: [] 
+            colorPlate: "#1a1a1a", colorMajorTicks: "#ccc", colorNumbers: "#fff",
+            needleType: "arrow", needleWidth: 4, borders: true, valueBox: false,
+            animationDuration: 150, animationRule: "linear"
         }).draw();
 
         async function toggleConnection() {
-            if (device && device.gatt.connected) {
-                device.gatt.disconnect();
-                return;
-            }
+            if (device && device.gatt.connected) { device.gatt.disconnect(); return; }
             try {
-                device = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: "Truck_RPM_Control" }],
-                    optionalServices: [SERVICE_UUID]
-                });
-                device.addEventListener('gattserverdisconnected', onDisconnected);
+                device = await navigator.bluetooth.requestDevice({ filters: [{ name: "Truck_RPM_Control" }], optionalServices: [SERVICE_UUID] });
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 characteristic = await service.getCharacteristic(CHAR_UUID);
-                updateUIConnected(true);
+                updateUI(true);
                 await characteristic.startNotifications();
-                characteristic.addEventListener('characteristicvaluechanged', handleData);
-            } catch (err) { 
-                console.error(err); 
-                document.getElementById('status').innerText = "Error!";
-            }
+                characteristic.addEventListener('characteristicvaluechanged', (e) => {
+                    let data = e.target.value;
+                    let cur = data.getUint16(0, true);
+                    let tar = data.getUint16(2, true);
+                    gauge.value = cur;
+                    document.getElementById('rpmVal').innerText = cur;
+                    let color = tar > 1800 ? "rgba(231, 76, 60, 0.7)" : "rgba(46, 204, 113, 0.5)";
+                    gauge.update({ highlights: tar > 0 ? [{ from: 0, to: tar, color: color }] : [] });
+                });
+            } catch (err) { console.error(err); }
         }
 
-        function onDisconnected() {
-            updateUIConnected(false);
-            gauge.value = 0;
-            document.getElementById('rpmVal').innerText = "0";
-            gauge.update({ highlights: [] });
-        }
-
-        function updateUIConnected(isConnected) {
+        function updateUI(connected) {
             const btn = document.getElementById('connectBtn');
-            const status = document.getElementById('status');
-            if (isConnected) {
-                btn.innerText = "DISCONNECT";
-                btn.classList.add('connected');
-                status.innerText = "Connected";
-                status.style.color = "#2ecc71";
-            } else {
-                btn.innerText = "CONNECT";
-                btn.classList.remove('connected');
-                status.innerText = "Ready";
-                status.style.color = "#888";
-            }
-        }
-
-        function handleData(e) {
-            let data = e.target.value;
-            if(data.byteLength >= 4) {
-                let currentRPM = data.getUint16(0, true);
-                let targetRPM = data.getUint16(2, true);
-                gauge.value = currentRPM;
-                document.getElementById('rpmVal').innerText = currentRPM;
-                let arcColor = targetRPM > 1800 ? "rgba(231, 76, 60, 0.7)" : "rgba(46, 204, 113, 0.5)";
-                if (targetRPM > 0) {
-                    gauge.update({ highlights: [{ from: 0, to: targetRPM, color: arcColor }] });
-                } else {
-                    gauge.update({ highlights: [] });
-                }
-            }
+            btn.innerText = connected ? "DISCONNECT" : "CONNECT";
+            btn.classList.toggle('connected', connected);
+            document.getElementById('status').innerText = connected ? "Connected" : "Ready";
+            document.getElementById('status').style.color = connected ? "#2ecc71" : "#888";
         }
 
         async function sendCmd(val) {
@@ -184,21 +139,12 @@
                 document.getElementById('btn500').classList.toggle('active', val === 500);
                 val = (val === 500) ? 0x5000 : 0x2500;
             }
-            if (characteristic) {
-                await characteristic.writeValue(new Uint16Array([val]));
-            }
+            if (characteristic) await characteristic.writeValue(new Uint16Array([val]));
         }
 
-        // SA 설정 함수 (0xA500 | SA값)
         async function setSA() {
-            const saVal = parseInt(document.getElementById('saSelect').value);
-            const cmd = 0xA500 | saVal;
-            if (characteristic) {
-                await characteristic.writeValue(new Uint16Array([cmd]));
-                alert("Source Address set to: " + saVal);
-            } else {
-                alert("Please CONNECT first!");
-            }
+            const sa = parseInt(document.getElementById('saSelect').value);
+            if (characteristic) await characteristic.writeValue(new Uint16Array([0xA500 | sa]));
         }
     </script>
 </body>
