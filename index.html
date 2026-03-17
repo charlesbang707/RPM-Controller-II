@@ -13,9 +13,10 @@
             min-height: 95vh; padding-bottom: env(safe-area-inset-bottom, 20px);
         }
         
-        /* 3D 상단 버튼 및 상태창 */
-        .top-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .top-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
         #status { font-size: 14px; color: #888; font-weight: bold; }
+        
+        /* 3D 상단 버튼 */
         .btn-connect { 
             background: linear-gradient(to bottom, #555 0%, #333 100%); border: 1px solid #222;
             color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;
@@ -25,13 +26,19 @@
         .btn-connect:active { transform: translateY(3px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 0 #111, 0 2px 2px rgba(0,0,0,0.5); }
         .btn-connect.connected { background: linear-gradient(to bottom, #e74c3c 0%, #c0392b 100%); border-color: #a93226; box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 0 #922b21, 0 5px 5px rgba(0,0,0,0.5); }
 
-        /* 게이지 래퍼 및 숫자 */
-        .gauge-wrapper { position: relative; margin: 10px 0; }
+        /* --- 신규 추가: SA 선택 섹션 (기존 디자인 스타일 유지) --- */
+        .sa-container { width: 100%; max-width: 380px; display: flex; gap: 8px; align-items: center; margin-bottom: 10px; background: #222; padding: 8px; border-radius: 10px; border: 1px solid #333; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5); }
+        .sa-label { font-size: 11px; color: #888; font-weight: bold; min-width: 60px; }
+        .sa-select { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 6px; font-weight: bold; outline: none; }
+        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 0 #000; }
+        .btn-set:active { transform: translateY(1px); box-shadow: 0 1px 0 #000; }
+        /* --------------------------------------------------- */
+
+        .gauge-wrapper { position: relative; margin: 5px 0; }
         #rpmVal { font-size: 50px; font-weight: 900; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top: -20px; }
         .target-label { font-size: 12px; color: #aaa; letter-spacing: 1px; }
 
-        /* 속도 선택 버튼 */
-        .baud-container { display: flex; gap: 10px; margin: 10px 0 20px 0; }
+        .baud-container { display: flex; gap: 10px; margin: 10px 0 15px 0; }
         .btn-baud { 
             background: linear-gradient(to bottom, #444 0%, #222 100%); border: 1px solid #111; color: #aaa; 
             padding: 8px 15px; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;
@@ -40,7 +47,6 @@
         .btn-baud:active { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
         .btn-baud.active { color: #3498db; text-shadow: 0 0 5px rgba(52,152,219,0.5); }
 
-        /* 3D 하단 컨트롤 버튼 */
         .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; max-width: 380px; }
         .btn { 
             padding: 20px; border-radius: 12px; font-size: 18px; font-weight: bold; color: white; border: none; cursor: pointer;
@@ -59,6 +65,16 @@
     <div class="top-bar">
         <div id="status">Ready</div>
         <button id="connectBtn" class="btn-connect" onclick="toggleConnection()">CONNECT</button>
+    </div>
+
+    <div class="sa-container">
+        <span class="sa-label">SOURCE ADDR</span>
+        <select id="saSelect" class="sa-select">
+            <option value="229">Default (0xE5)</option>
+            <option value="232">Caterpillar (0xE8)</option>
+            <option value="247">Cummins (0xF7)</option>
+        </select>
+        <button class="btn-set" onclick="setSA()">SET</button>
     </div>
 
     <div class="gauge-wrapper">
@@ -84,7 +100,6 @@
         const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
         const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
-        // 3D 입체 게이지 설정
         var gauge = new RadialGauge({
             renderTo: 'gauge-rpm', width: 280, height: 280, units: "",
             minValue: 0, maxValue: 3000,
@@ -103,7 +118,7 @@
 
         async function toggleConnection() {
             if (device && device.gatt.connected) {
-                device.gatt.disconnect(); // 명시적 연결 해제로 블루투스 고스트 현상 방지
+                device.gatt.disconnect();
                 return;
             }
             try {
@@ -112,11 +127,9 @@
                     optionalServices: [SERVICE_UUID]
                 });
                 device.addEventListener('gattserverdisconnected', onDisconnected);
-                
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 characteristic = await service.getCharacteristic(CHAR_UUID);
-                
                 updateUIConnected(true);
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleData);
@@ -154,16 +167,13 @@
             if(data.byteLength >= 4) {
                 let currentRPM = data.getUint16(0, true);
                 let targetRPM = data.getUint16(2, true);
-                
                 gauge.value = currentRPM;
                 document.getElementById('rpmVal').innerText = currentRPM;
-
-                // Target RPM이 1800 초과 시 빨간색 아크, 이하면 녹색 아크
                 let arcColor = targetRPM > 1800 ? "rgba(231, 76, 60, 0.7)" : "rgba(46, 204, 113, 0.5)";
                 if (targetRPM > 0) {
                     gauge.update({ highlights: [{ from: 0, to: targetRPM, color: arcColor }] });
                 } else {
-                    gauge.update({ highlights: [] }); // Stop 상태면 아크 지우기
+                    gauge.update({ highlights: [] });
                 }
             }
         }
@@ -172,9 +182,22 @@
             if (val === 250 || val === 500) {
                 document.getElementById('btn250').classList.toggle('active', val === 250);
                 document.getElementById('btn500').classList.toggle('active', val === 500);
+                val = (val === 500) ? 0x5000 : 0x2500;
             }
             if (characteristic) {
                 await characteristic.writeValue(new Uint16Array([val]));
+            }
+        }
+
+        // SA 설정 함수 (0xA500 | SA값)
+        async function setSA() {
+            const saVal = parseInt(document.getElementById('saSelect').value);
+            const cmd = 0xA500 | saVal;
+            if (characteristic) {
+                await characteristic.writeValue(new Uint16Array([cmd]));
+                alert("Source Address set to: " + saVal);
+            } else {
+                alert("Please CONNECT first!");
             }
         }
     </script>
