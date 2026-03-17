@@ -11,16 +11,14 @@
         .btn-connect { background: #333; color: white; border: 1px solid #444; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-connect.connected { background: #e74c3c; }
 
-        /* SA 선택 기능 복구 */
         .sa-container { width: 100%; max-width: 380px; display: flex; gap: 8px; margin-bottom: 15px; background: #222; padding: 10px; border-radius: 10px; border: 1px solid #333; }
         .sa-select { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 5px; }
-        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; }
 
-        /* 3D 게이지 레이아웃 */
         .gauge-wrapper { position: relative; width: 320px; height: 320px; }
         #targetDisplay {
             position: absolute; top: 76%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 22px; font-weight: bold; color: #3498db; text-shadow: 0 0 10px rgba(52,152,219,0.5);
+            font-size: 24px; font-weight: bold; color: #3498db; text-shadow: 0 0 10px rgba(52,152,219,0.5);
             pointer-events: none; z-index: 10;
         }
 
@@ -71,7 +69,6 @@
         const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
         const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
-        // 3D 게이지 및 타겟 아크 복구
         var gauge = new RadialGauge({
             renderTo: 'gauge-rpm', width: 320, height: 320,
             minValue: 0, maxValue: 3000,
@@ -85,16 +82,18 @@
         }).draw();
 
         async function toggleConnection() {
-            if (device && device.gatt.connected) { device.gatt.disconnect(); return; }
+            if (device && device.gatt.connected) { 
+                await device.gatt.disconnect(); 
+                updateUI(false);
+                return; 
+            }
             try {
                 device = await navigator.bluetooth.requestDevice({ filters: [{ name: "Truck_RPM_Control" }], optionalServices: [SERVICE_UUID] });
                 const server = await device.gatt.connect();
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 characteristic = await service.getCharacteristic(CHAR_UUID);
                 
-                document.getElementById('status').innerText = "CONNECTED";
-                document.getElementById('connectBtn').innerText = "DISCONNECT";
-                document.getElementById('connectBtn').classList.add('connected');
+                updateUI(true);
 
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', (e) => {
@@ -110,7 +109,26 @@
                     document.getElementById('btn250').classList.toggle('active', baud === 0);
                     document.getElementById('btn500').classList.toggle('active', baud === 1);
                 });
+
+                device.addEventListener('gattserverdisconnected', () => updateUI(false));
+
             } catch (err) { console.log(err); }
+        }
+
+        function updateUI(connected) {
+            const status = document.getElementById('status');
+            const btn = document.getElementById('connectBtn');
+            if (connected) {
+                status.innerText = "CONNECTED";
+                status.style.color = "#2ecc71";
+                btn.innerText = "DISCONNECT";
+                btn.classList.add('connected');
+            } else {
+                status.innerText = "READY";
+                status.style.color = "#888";
+                btn.innerText = "CONNECT";
+                btn.classList.remove('connected');
+            }
         }
 
         async function sendCmd(val) { if (characteristic) await characteristic.writeValue(new Uint16Array([val])); }
