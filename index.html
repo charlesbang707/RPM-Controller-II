@@ -6,21 +6,35 @@
     <title>J1939 Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { background-color: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 15px; }
-        .top-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; margin-bottom: 20px; }
-        .btn-connect { background: #333; color: white; border: 1px solid #444; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        body { 
+            background-color: #121212; color: white; font-family: sans-serif; 
+            display: flex; flex-direction: column; align-items: center; margin: 0; padding: 15px; 
+        }
+        .top-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .btn-connect { background: #333; color: white; border: 1px solid #444; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #000; }
         .btn-connect.connected { background: #e74c3c; }
+
+        /* SA 선택 컨테이너 복구 */
+        .sa-container { 
+            width: 100%; max-width: 380px; display: flex; gap: 8px; align-items: center; 
+            margin-bottom: 15px; background: #222; padding: 10px; border-radius: 10px; border: 1px solid #333;
+        }
+        .sa-label { font-size: 12px; color: #888; font-weight: bold; }
+        .sa-select { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 5px; }
+        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+
+        /* 3D 게이지 래퍼 */
+        .gauge-wrapper { position: relative; width: 320px; height: 320px; }
         
-        /* 게이지 스타일 */
-        .gauge-wrapper { position: relative; width: 320px; height: 320px; margin-top: 10px; }
+        /* 타겟 RPM 숫자 위치 조정 (더 낮게) */
         #targetDisplay {
-            position: absolute; top: 72%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 20px; font-weight: bold; color: #3498db; text-shadow: 0 0 10px rgba(52,152,219,0.5);
+            position: absolute; top: 75%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 22px; font-weight: bold; color: #3498db; text-shadow: 0 0 10px rgba(52,152,219,0.5);
             pointer-events: none; z-index: 10;
         }
 
-        .baud-container { display: flex; gap: 10px; margin: 30px 0; }
-        .btn-baud { background: #222; color: #888; border: 1px solid #444; padding: 12px 25px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .baud-container { display: flex; gap: 10px; margin: 25px 0; }
+        .btn-baud { background: #222; color: #888; border: 1px solid #444; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
         .btn-baud.active { border-color: #3498db; color: #3498db; background: rgba(52,152,219,0.1); }
 
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 380px; }
@@ -31,8 +45,18 @@
 </head>
 <body>
     <div class="top-bar">
-        <div id="status" style="color:#888">DISCONNECTED</div>
+        <div id="status" style="color:#888; font-weight:bold;">READY</div>
         <button id="connectBtn" class="btn-connect" onclick="toggleConnection()">CONNECT</button>
+    </div>
+
+    <div class="sa-container">
+        <span class="sa-label">SA SELECT</span>
+        <select id="saSelect" class="sa-select">
+            <option value="229">Default (0xE5)</option>
+            <option value="232">Caterpillar (0xE8)</option>
+            <option value="247">Cummins (0xF7)</option>
+        </select>
+        <button class="btn-set" onclick="setSA()">SET</button>
     </div>
 
     <div class="gauge-wrapper">
@@ -41,8 +65,8 @@
     </div>
     
     <div class="baud-container">
-        <button id="btn250" class="btn-baud active" onclick="changeBaud(250)">250K</button>
-        <button id="btn500" class="btn-baud" onclick="changeBaud(500)">500K</button>
+        <button id="btn250" class="btn-baud active" onclick="changeBaud(250)">250K bps</button>
+        <button id="btn500" class="btn-baud" onclick="changeBaud(500)">500K bps</button>
     </div>
 
     <div class="grid">
@@ -66,11 +90,11 @@
             borderShadowWidth: 20, borderInnerWidth: 2, borderMiddleWidth: 4, borderOuterWidth: 8,
             colorBorderOuter: "#333", colorBorderOuterEnd: "#111",
             needleType: "arrow", needleWidth: 4, needleCircleSize: 7,
-            colorNeedle: "rgba(255, 255, 255, 0.8)", colorNeedleEnd: "rgba(255, 255, 255, 0.8)",
+            colorNeedle: "#fff", colorNeedleEnd: "#fff",
             valueBox: false,
-            // 타겟 RPM 표시 아크(Highlights)
-            highlights: [{ from: 0, to: 0, color: "rgba(46, 204, 113, 0.3)" }],
-            animationDuration: 150, animationRule: "linear"
+            // 타겟 아크 부활
+            highlights: [{ from: 0, to: 0, color: "rgba(46, 204, 113, 0.4)" }],
+            animationDuration: 100, animationRule: "linear"
         }).draw();
 
         async function toggleConnection() {
@@ -82,6 +106,7 @@
                 characteristic = await service.getCharacteristic(CHAR_UUID);
                 
                 document.getElementById('status').innerText = "CONNECTED";
+                document.getElementById('status').style.color = "#2ecc71";
                 document.getElementById('connectBtn').innerText = "DISCONNECT";
                 document.getElementById('connectBtn').classList.add('connected');
 
@@ -94,9 +119,8 @@
                     
                     gauge.value = cur;
                     document.getElementById('targetDisplay').innerText = tar;
-                    
-                    // 타겟 아크 업데이트
-                    gauge.update({ highlights: [{ from: 0, to: tar, color: "rgba(46, 204, 113, 0.3)" }] });
+                    // 아크 업데이트
+                    gauge.update({ highlights: [{ from: 0, to: tar, color: "rgba(46, 204, 113, 0.4)" }] });
                     
                     document.getElementById('btn250').classList.toggle('active', baud === 0);
                     document.getElementById('btn500').classList.toggle('active', baud === 1);
@@ -105,9 +129,15 @@
         }
 
         async function sendCmd(val) { if (characteristic) await characteristic.writeValue(new Uint16Array([val])); }
+        
         async function changeBaud(baud) {
             let val = (baud === 500) ? 0x5000 : 0x2500;
             if (characteristic) await characteristic.writeValue(new Uint16Array([val]));
+        }
+
+        async function setSA() {
+            const sa = parseInt(document.getElementById('saSelect').value);
+            if (characteristic) await characteristic.writeValue(new Uint16Array([0xA500 | sa]));
         }
     </script>
 </body>
