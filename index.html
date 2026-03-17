@@ -6,27 +6,18 @@
     <title>J1939 Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
     <style>
-        body { 
-            background-color: #121212; color: white; font-family: sans-serif; 
-            display: flex; flex-direction: column; align-items: center; margin: 0; padding: 15px; 
-        }
+        body { background-color: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 15px; }
         .top-bar { width: 100%; max-width: 400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .btn-connect { background: #333; color: white; border: 1px solid #444; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #000; }
+        .btn-connect { background: #333; color: white; border: 1px solid #444; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-connect.connected { background: #e74c3c; }
 
-        /* SA 선택 컨테이너 복구 */
-        .sa-container { 
-            width: 100%; max-width: 380px; display: flex; gap: 8px; align-items: center; 
-            margin-bottom: 15px; background: #222; padding: 10px; border-radius: 10px; border: 1px solid #333;
-        }
-        .sa-label { font-size: 12px; color: #888; font-weight: bold; }
+        /* SA 선택 복구 */
+        .sa-container { width: 100%; max-width: 380px; display: flex; gap: 8px; margin-bottom: 15px; background: #222; padding: 10px; border-radius: 10px; }
         .sa-select { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 5px; }
-        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        .btn-set { background: #555; color: white; border: none; padding: 8px 15px; border-radius: 5px; font-weight: bold; }
 
-        /* 3D 게이지 래퍼 */
+        /* 3D 게이지 스타일 */
         .gauge-wrapper { position: relative; width: 320px; height: 320px; }
-        
-        /* 타겟 RPM 숫자 위치 조정 (더 낮게) */
         #targetDisplay {
             position: absolute; top: 75%; left: 50%; transform: translate(-50%, -50%);
             font-size: 22px; font-weight: bold; color: #3498db; text-shadow: 0 0 10px rgba(52,152,219,0.5);
@@ -50,13 +41,12 @@
     </div>
 
     <div class="sa-container">
-        <span class="sa-label">SA SELECT</span>
         <select id="saSelect" class="sa-select">
             <option value="229">Default (0xE5)</option>
             <option value="232">Caterpillar (0xE8)</option>
             <option value="247">Cummins (0xF7)</option>
         </select>
-        <button class="btn-set" onclick="setSA()">SET</button>
+        <button class="btn-set" onclick="setSA()">SET SA</button>
     </div>
 
     <div class="gauge-wrapper">
@@ -65,8 +55,8 @@
     </div>
     
     <div class="baud-container">
-        <button id="btn250" class="btn-baud active" onclick="changeBaud(250)">250K bps</button>
-        <button id="btn500" class="btn-baud" onclick="changeBaud(500)">500K bps</button>
+        <button id="btn250" class="btn-baud active" onclick="changeBaud(250)">250K</button>
+        <button id="btn500" class="btn-baud" onclick="changeBaud(500)">500K</button>
     </div>
 
     <div class="grid">
@@ -81,18 +71,14 @@
         const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
         const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
-        // 3D 스타일 및 타겟 아크 복구
         var gauge = new RadialGauge({
             renderTo: 'gauge-rpm', width: 320, height: 320,
             minValue: 0, maxValue: 3000,
             majorTicks: ["0","500","1000","1500","2000","2500","3000"],
-            colorPlate: "#1a1a1a", 
-            borderShadowWidth: 20, borderInnerWidth: 2, borderMiddleWidth: 4, borderOuterWidth: 8,
+            colorPlate: "#1a1a1a", borderShadowWidth: 20, borderInnerWidth: 2, borderMiddleWidth: 4, borderOuterWidth: 8,
             colorBorderOuter: "#333", colorBorderOuterEnd: "#111",
-            needleType: "arrow", needleWidth: 4, needleCircleSize: 7,
-            colorNeedle: "#fff", colorNeedleEnd: "#fff",
+            needleType: "arrow", needleWidth: 4, needleCircleSize: 7, colorNeedle: "#fff", colorNeedleEnd: "#fff",
             valueBox: false,
-            // 타겟 아크 부활
             highlights: [{ from: 0, to: 0, color: "rgba(46, 204, 113, 0.4)" }],
             animationDuration: 100, animationRule: "linear"
         }).draw();
@@ -106,22 +92,18 @@
                 characteristic = await service.getCharacteristic(CHAR_UUID);
                 
                 document.getElementById('status').innerText = "CONNECTED";
-                document.getElementById('status').style.color = "#2ecc71";
                 document.getElementById('connectBtn').innerText = "DISCONNECT";
                 document.getElementById('connectBtn').classList.add('connected');
 
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', (e) => {
                     let data = e.target.value;
-                    let cur = data.getUint16(0, true);
+                    gauge.value = data.getUint16(0, true);
                     let tar = data.getUint16(2, true);
-                    let baud = data.getUint8(4);
-                    
-                    gauge.value = cur;
                     document.getElementById('targetDisplay').innerText = tar;
-                    // 아크 업데이트
                     gauge.update({ highlights: [{ from: 0, to: tar, color: "rgba(46, 204, 113, 0.4)" }] });
                     
+                    let baud = data.getUint8(4);
                     document.getElementById('btn250').classList.toggle('active', baud === 0);
                     document.getElementById('btn500').classList.toggle('active', baud === 1);
                 });
@@ -129,12 +111,10 @@
         }
 
         async function sendCmd(val) { if (characteristic) await characteristic.writeValue(new Uint16Array([val])); }
-        
         async function changeBaud(baud) {
             let val = (baud === 500) ? 0x5000 : 0x2500;
             if (characteristic) await characteristic.writeValue(new Uint16Array([val]));
         }
-
         async function setSA() {
             const sa = parseInt(document.getElementById('saSelect').value);
             if (characteristic) await characteristic.writeValue(new Uint16Array([0xA500 | sa]));
